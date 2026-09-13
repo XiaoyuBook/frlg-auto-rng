@@ -42,7 +42,8 @@ class AppUpdateController(QObject):
             + ("尚未检查程序更新。" if self.frozen else "源码模式不使用程序自更新。")
         )
         self.button.setToolTip(
-            "冻结绿色版通过 GitHub 正式 Release 整包更新；"
+            "冻结绿色版优先通过 GitHub 正式 Release 整包更新；"
+            "GitHub 不可用时自动改用 Gitee Release 分卷；"
             "配置、日志、进度和 Seed 表保留在用户目录。"
         )
         self.auto_timer = QTimer(self)
@@ -66,10 +67,16 @@ class AppUpdateController(QObject):
         manifest = candidate.manifest
         size_mib = manifest.bytes / (1024 * 1024)
         notes = manifest.notes.strip() or "本版未提供额外更新说明。"
+        source = (
+            f"Gitee 备用源（{len(candidate.parts)} 个分卷）"
+            if candidate.source == "gitee"
+            else "GitHub"
+        )
         return (
             f"当前版本：{APP_VERSION}\n"
             f"新版本：{manifest.version}\n"
             f"发布时间：{candidate.published_at}\n"
+            f"下载来源：{source}\n"
             f"下载大小：{size_mib:.1f} MiB\n\n"
             f"{notes}\n\n"
             "将下载完整绿色版、校验后退出并安装。是否继续？"

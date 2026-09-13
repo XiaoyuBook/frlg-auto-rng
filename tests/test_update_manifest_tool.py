@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from app_version import APP_VERSION
-from tools.create_update_manifest import create_manifest, main
+from tools.create_update_manifest import create_gitee_release_assets, create_manifest, main
 
 
 class UpdateManifestToolTests(unittest.TestCase):
@@ -49,6 +49,40 @@ class UpdateManifestToolTests(unittest.TestCase):
             package.write_bytes(b"x")
             with self.assertRaises(ValueError):
                 create_manifest(package, root / "empty")
+
+    def test_gitee_release_assets_are_sequential_verified_parts(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            unpacked = root / "release"
+            unpacked.mkdir()
+            (unpacked / "FRLG-Auto-RNG.exe").write_bytes(b"main")
+            package = root / f"FRLG-Auto-RNG-{APP_VERSION}-windows-x64.zip"
+            package.write_bytes(b"0123456789")
+            manifest = create_manifest(package, unpacked, notes="notes")
+
+            gitee = create_gitee_release_assets(
+                package, manifest, root / "gitee-release-assets", part_size=4,
+            )
+
+            self.assertEqual(gitee["source"], "gitee-split")
+            self.assertEqual(gitee["repository"], "dazzling-night-scales/frlg-auto-rng")
+            self.assertEqual(
+                [part["name"] for part in gitee["parts"]],
+                [f"{package.name}.001", f"{package.name}.002", f"{package.name}.003"],
+            )
+            rebuilt = b"".join(
+                (root / "gitee-release-assets" / part["name"]).read_bytes()
+                for part in gitee["parts"]
+            )
+            self.assertEqual(rebuilt, package.read_bytes())
+            self.assertEqual(
+                json.loads(
+                    (root / "gitee-release-assets" / "gitee-update-manifest.json").read_text(
+                        encoding="utf-8"
+                    )
+                ),
+                gitee,
+            )
 
     def test_manifest_cli_reads_release_notes_file(self):
         with tempfile.TemporaryDirectory() as temporary:

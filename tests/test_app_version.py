@@ -10,6 +10,10 @@ class AppVersionTests(unittest.TestCase):
         self.assertEqual(app_version.UPDATE_SCHEMA, 1)
         self.assertEqual(app_version.GITHUB_REPOSITORY, "axechaso/frlg-auto-rng")
         self.assertEqual(
+            app_version.GITEE_REPOSITORY,
+            "dazzling-night-scales/frlg-auto-rng",
+        )
+        self.assertEqual(
             app_version.version_payload(),
             {
                 "version": "0.9.2",

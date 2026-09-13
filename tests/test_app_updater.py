@@ -18,8 +18,12 @@ from app_updater import (
     UpdateCancelled,
     UpdateError,
     UpdateManifest,
+    UpdatePackagePart,
+    candidate_from_gitee_release,
     candidate_from_release,
+    check_for_update,
     download_package,
+    parse_gitee_manifest,
     parse_manifest,
     required_free_space,
     safe_extract,
@@ -67,6 +71,55 @@ def make_release(manifest):
                 "size": manifest.bytes if name == manifest.package else 100,
                 "browser_download_url": base + name,
             }
+            for name in names
+        ],
+    }
+
+
+def gitee_manifest_payload(manifest, part_sizes=(60, 63), **overrides):
+    value = {
+        **manifest_payload(
+            version=manifest.version,
+            version_code=manifest.version_code,
+            package=manifest.package,
+            sha256=manifest.sha256,
+            bytes=manifest.bytes,
+            unpacked_bytes=manifest.unpacked_bytes,
+            notes=manifest.notes,
+            release_url=(
+                "https://gitee.com/dazzling-night-scales/frlg-auto-rng/"
+                f"releases/tag/v{manifest.version}"
+            ),
+        ),
+        "source": "gitee-split",
+        "repository": "dazzling-night-scales/frlg-auto-rng",
+        "parts": [
+            {
+                "name": f"{manifest.package}.{index:03d}",
+                "sha256": f"{index:x}" * 64,
+                "bytes": size,
+            }
+            for index, size in enumerate(part_sizes, 1)
+        ],
+    }
+    value.update(overrides)
+    return value
+
+
+def make_gitee_release(manifest, part_count=2):
+    base = (
+        "https://gitee.com/dazzling-night-scales/frlg-auto-rng/"
+        f"releases/download/v{manifest.version}/"
+    )
+    names = ["gitee-update-manifest.json"] + [
+        f"{manifest.package}.{index:03d}" for index in range(1, part_count + 1)
+    ]
+    return {
+        "prerelease": False,
+        "tag_name": f"v{manifest.version}",
+        "created_at": "2026-09-13T12:00:00+08:00",
+        "assets": [
+            {"name": name, "browser_download_url": base + name}
             for name in names
         ],
     }
@@ -186,14 +239,35 @@ class AppUpdaterTests(unittest.TestCase):
         release["assets"].pop()
         with self.assertRaises(UpdateError):
             candidate_from_release(release, manifest)
+
+    def test_gitee_manifest_and_release_require_exact_sequential_parts(self):
+        manifest = make_manifest()
+        payload = gitee_manifest_payload(manifest)
+        parsed, parts = parse_gitee_manifest(json.dumps(payload).encode())
+        candidate = candidate_from_gitee_release(
+            make_gitee_release(parsed), parsed, parts,
+        )
+        self.assertEqual(candidate.source, "gitee")
+        self.assertIsNone(candidate.package_url)
+        self.assertEqual(len(candidate.parts), 2)
+        self.assertTrue(candidate.parts[0].url.startswith("https://gitee.com/"))
+
+        bad = json.loads(json.dumps(payload))
+        bad["parts"][1]["name"] = f"{manifest.package}.003"
+        with self.assertRaisesRegex(UpdateError, "名称或顺序"):
+            parse_gitee_manifest(json.dumps(bad).encode())
+        release = make_gitee_release(parsed)
+        release["assets"][1]["browser_download_url"] = (
+            "https://example.invalid/" + parts[0].name
+        )
+        with self.assertRaisesRegex(UpdateError, "目标 Gitee"):
+            candidate_from_gitee_release(release, parsed, parts)
         release = make_release(manifest)
         release["assets"][0]["size"] += 1
         with self.assertRaises(UpdateError):
             candidate_from_release(release, manifest)
 
     def test_check_uses_cache_etag_and_returns_errors_without_overwriting_cache(self):
-        from app_updater import check_for_update
-
         package_content = b"x" * 123
         manifest = make_manifest(
             sha256=hashlib.sha256(package_content).hexdigest(), bytes=len(package_content)
@@ -228,6 +302,7 @@ class AppUpdaterTests(unittest.TestCase):
             )
             self.assertTrue(second.from_cache)
             self.assertEqual(len(calls), 2)
+            self.assertTrue(all("gitee.com" not in request.full_url for request in calls))
             error = check_for_update(
                 cache_dir=cache_dir,
                 force=True,
@@ -240,6 +315,53 @@ class AppUpdaterTests(unittest.TestCase):
                 json.loads((cache_dir / "check-cache.json").read_text(encoding="utf-8"))["etag"],
                 '"abc"',
             )
+
+    def test_check_falls_back_to_gitee_only_after_github_failure(self):
+        manifest = make_manifest()
+        gitee_payload = gitee_manifest_payload(manifest)
+        release = make_gitee_release(manifest)
+        responses = [
+            OSError("github offline"),
+            BytesResponse(json.dumps(release).encode()),
+            BytesResponse(json.dumps(gitee_payload).encode()),
+        ]
+        urls = []
+
+        def opener(request, **_kwargs):
+            urls.append(request.full_url)
+            response = responses.pop(0)
+            if isinstance(response, BaseException):
+                raise response
+            return response
+
+        with tempfile.TemporaryDirectory() as temporary:
+            cache_dir = Path(temporary)
+            (cache_dir / "check-cache.json").write_text(
+                json.dumps({"etag": '"old-github"'}), encoding="utf-8",
+            )
+            result = check_for_update(
+                cache_dir=cache_dir,
+                opener=opener,
+                current_version_code=1,
+                force=True,
+            )
+            cached = check_for_update(
+                cache_dir=cache_dir,
+                opener=lambda *_a, **_k: self.fail("verified Gitee cache should be reused"),
+                current_version_code=1,
+            )
+            cached_json = json.loads(
+                (cache_dir / "check-cache.json").read_text(encoding="utf-8")
+            )
+        self.assertEqual(result.status, "available")
+        self.assertEqual(result.candidate.source, "gitee")
+        self.assertIn("Gitee 备用源", result.message)
+        self.assertTrue(cached.from_cache)
+        self.assertEqual(cached.candidate, result.candidate)
+        self.assertIsNone(cached_json["etag"])
+        self.assertIn("api.github.com", urls[0])
+        self.assertIn("gitee.com", urls[1])
+
     def test_required_space_has_safety_margin(self):
         manifest = make_manifest(bytes=10, unpacked_bytes=100)
         self.assertEqual(required_free_space(manifest), 10 + 100 + 256 * 1024 * 1024)
@@ -281,6 +403,151 @@ class AppUpdaterTests(unittest.TestCase):
                     opener=lambda *_args, **_kwargs: BytesResponse(content),
                 )
             self.assertFalse(destination.exists())
+
+    def test_gitee_parts_stream_into_one_verified_package(self):
+        contents = (b"first part", b"second part")
+        package = b"".join(contents)
+        manifest = make_manifest(
+            bytes=len(package), sha256=hashlib.sha256(package).hexdigest(),
+        )
+        base = (
+            "https://gitee.com/dazzling-night-scales/frlg-auto-rng/"
+            "releases/download/v0.2/"
+        )
+        parts = tuple(
+            UpdatePackagePart(
+                f"{manifest.package}.{index:03d}",
+                hashlib.sha256(content).hexdigest(),
+                len(content),
+                base + f"{manifest.package}.{index:03d}",
+            )
+            for index, content in enumerate(contents, 1)
+        )
+        candidate = UpdateCandidate(
+            manifest, None, "2026-09-13T12:00:00+08:00", "v0.2", "gitee", parts,
+        )
+        responses = list(contents)
+        progress = []
+        with tempfile.TemporaryDirectory() as temporary:
+            destination = Path(temporary) / manifest.package
+            download_package(
+                candidate,
+                destination,
+                opener=lambda *_args, **_kwargs: BytesResponse(responses.pop(0)),
+                progress=lambda received, total: progress.append((received, total)),
+            )
+            self.assertEqual(destination.read_bytes(), package)
+        self.assertEqual(progress[-1], (len(package), len(package)))
+
+    def test_gitee_corrupted_part_is_rejected_and_removed(self):
+        contents = (b"first part", b"second part")
+        package = b"".join(contents)
+        manifest = make_manifest(
+            bytes=len(package), sha256=hashlib.sha256(package).hexdigest(),
+        )
+        base = (
+            "https://gitee.com/dazzling-night-scales/frlg-auto-rng/"
+            "releases/download/v0.2/"
+        )
+        parts = tuple(
+            UpdatePackagePart(
+                f"{manifest.package}.{index:03d}",
+                hashlib.sha256(content).hexdigest(),
+                len(content),
+                base + f"{manifest.package}.{index:03d}",
+            )
+            for index, content in enumerate(contents, 1)
+        )
+        candidate = UpdateCandidate(
+            manifest, None, "2026-09-13T12:00:00+08:00", "v0.2", "gitee", parts,
+        )
+        responses = [contents[0], b"corruptpart"]
+        with tempfile.TemporaryDirectory() as temporary:
+            destination = Path(temporary) / manifest.package
+            with self.assertRaisesRegex(UpdateError, "分卷 SHA-256 校验失败"):
+                download_package(
+                    candidate,
+                    destination,
+                    opener=lambda *_args, **_kwargs: BytesResponse(responses.pop(0)),
+                )
+            self.assertFalse(destination.exists())
+            self.assertFalse(destination.with_name(destination.name + ".part").exists())
+
+    def test_github_download_network_failure_uses_matching_gitee_parts(self):
+        contents = (b"abc", b"def")
+        package = b"".join(contents)
+        manifest = make_manifest(
+            bytes=len(package), sha256=hashlib.sha256(package).hexdigest(),
+        )
+        gitee_payload = gitee_manifest_payload(
+            manifest,
+            part_sizes=tuple(map(len, contents)),
+        )
+        for item, content in zip(gitee_payload["parts"], contents):
+            item["sha256"] = hashlib.sha256(content).hexdigest()
+        release = make_gitee_release(manifest)
+        primary = UpdateCandidate(
+            manifest,
+            "https://github.com/axechaso/frlg-auto-rng/releases/download/v0.2/"
+            + manifest.package,
+            "2026-09-13T12:00:00Z",
+            "v0.2",
+        )
+        responses = [
+            urllib.error.URLError("github download blocked"),
+            BytesResponse(json.dumps(release).encode()),
+            BytesResponse(json.dumps(gitee_payload).encode()),
+            *(BytesResponse(content) for content in contents),
+        ]
+
+        def opener(*_args, **_kwargs):
+            response = responses.pop(0)
+            if isinstance(response, BaseException):
+                raise response
+            return response
+
+        with tempfile.TemporaryDirectory() as temporary:
+            destination = Path(temporary) / manifest.package
+            download_package(primary, destination, opener=opener)
+            self.assertEqual(destination.read_bytes(), package)
+
+    def test_github_download_rejects_mismatching_gitee_package(self):
+        package = b"abcdef"
+        manifest = make_manifest(
+            bytes=len(package), sha256=hashlib.sha256(package).hexdigest(),
+        )
+        mirror_manifest = replace(manifest, sha256=hashlib.sha256(b"ghijkl").hexdigest())
+        gitee_payload = gitee_manifest_payload(
+            mirror_manifest,
+            part_sizes=(len(package),),
+        )
+        gitee_payload["parts"][0]["sha256"] = hashlib.sha256(package).hexdigest()
+        release = make_gitee_release(mirror_manifest, part_count=1)
+        primary = UpdateCandidate(
+            manifest,
+            "https://github.com/axechaso/frlg-auto-rng/releases/download/v0.2/"
+            + manifest.package,
+            "2026-09-13T12:00:00Z",
+            "v0.2",
+        )
+        responses = [
+            urllib.error.URLError("github download blocked"),
+            BytesResponse(json.dumps(release).encode()),
+            BytesResponse(json.dumps(gitee_payload).encode()),
+        ]
+
+        def opener(*_args, **_kwargs):
+            response = responses.pop(0)
+            if isinstance(response, BaseException):
+                raise response
+            return response
+
+        with tempfile.TemporaryDirectory() as temporary:
+            destination = Path(temporary) / manifest.package
+            with self.assertRaisesRegex(UpdateError, "校验值不一致"):
+                download_package(primary, destination, opener=opener)
+            self.assertFalse(destination.exists())
+            self.assertFalse(destination.with_name(destination.name + ".part").exists())
 
     def _write_zip(self, root: Path, entries):
         path = root / "package.zip"

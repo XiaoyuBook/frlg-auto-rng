@@ -7,6 +7,7 @@ APP_VERSION = "0.9.2"
 APP_VERSION_CODE = 2026091201
 UPDATE_SCHEMA = 1
 GITHUB_REPOSITORY = "axechaso/frlg-auto-rng"
+GITEE_REPOSITORY = "dazzling-night-scales/frlg-auto-rng"
 PACKAGE_PREFIX = "FRLG-Auto-RNG"
 MAIN_EXECUTABLE = "FRLG-Auto-RNG.exe"
 UPDATER_EXECUTABLE = "FRLG-Auto-RNG-Updater.exe"

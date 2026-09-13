@@ -2,7 +2,14 @@
 
 本文是当前火红/叶绿全自动乱数初步实现的开发快照。换设备或新建 Codex 对话时，先让新对话完整阅读本文件、根目录 `README.md` 和 `docs/INITIAL_AUTO_RNG.md`，再检查工作区实际状态。
 
-快照日期：2026-09-12。
+快照日期：2026-09-13。
+
+## 2026-09-13 GitHub 优先、Gitee 整包分卷备用更新
+
+- 程序更新源顺序固定为 GitHub 优先。GitHub Release 检查成功时不会访问 Gitee；GitHub 检查失败才读取 `dazzling-night-scales/frlg-auto-rng` 的 Gitee 最新正式 Release。GitHub 整包下载发生网络或证书错误时，也可切换到 Gitee，但镜像清单必须与已验证的 GitHub 清单在版本、版本码、包名、大小、完整 SHA-256 和解压大小上完全一致。
+- Gitee 只承担完整 Windows ZIP 的分卷备用下载，不实现标签、Seed 表或脚本热更新。每卷限制不超过 95 MiB，构建默认按 90 MiB 切分；每卷校验大小与 SHA-256，合并后再次校验完整 ZIP。缺卷、乱序、下载地址越库、单卷损坏、镜像清单不一致或完整摘要不符均拒绝安装并清除临时文件。
+- `tools/build_windows_release.ps1` 每次构建都会生成 `gitee-release-assets`，只含 `gitee-update-manifest.json` 和按 `.001` 起连续编号的分卷。用户在 Gitee 手工创建与 GitHub 同标签的正式 Release，并原名上传该目录全部文件；工具不自动登录或发布 Gitee。详细步骤见 `docs/WINDOWS_RELEASE.md`。
+- 本次只修改下一次构建会包含的源码、构建产物生成器、界面来源提示、测试和文档；没有改版本号、重打 0.9.2 或发布新的 Release。0.9.2 现有二进制不会自动获得该备用源功能。
 
 ## 2026-09-12 原包同步与 0.9.2 正式发布
 

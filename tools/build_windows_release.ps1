@@ -185,6 +185,7 @@ try {
 }
 
 $ZipPath = Join-Path $BuildRoot "$OutputName.zip"
+$GiteeAssets = Join-Path $BuildRoot "gitee-release-assets"
 # The release folder is self-contained. Remove PyInstaller's temporary copy
 # before compression so the archive does not require another full package's
 # worth of free disk space.
@@ -196,7 +197,7 @@ foreach ($IntermediatePath in @($StagedAssets, $PyInstallerDist, $PyInstallerWor
 Compress-Archive -Force -Path (Join-Path $ReleaseRoot "*") -DestinationPath $ZipPath
 Push-Location $Root
 try {
-    & $Python -m tools.create_update_manifest --package $ZipPath --unpacked-root $ReleaseRoot --notes-file $NotesFile
+    & $Python -m tools.create_update_manifest --package $ZipPath --unpacked-root $ReleaseRoot --notes-file $NotesFile --gitee-assets-dir $GiteeAssets
     if ($LASTEXITCODE -ne 0) { throw "更新清单生成失败" }
 } finally {
     Pop-Location
@@ -240,3 +241,4 @@ Write-Host "发布目录：$ReleaseRoot"
 Write-Host "发布压缩包：$ZipPath"
 Write-Host "更新清单：$(Join-Path $BuildRoot 'update-manifest.json')"
 Write-Host "SHA-256：$(Join-Path $BuildRoot "$OutputName.zip.sha256")"
+Write-Host "Gitee Release 待上传分卷：$GiteeAssets"

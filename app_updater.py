@@ -27,6 +27,7 @@ import truststore
 
 from app_version import (
     APP_VERSION_CODE,
+    GITEE_REPOSITORY,
     GITHUB_REPOSITORY,
     MAIN_EXECUTABLE,
     UPDATE_SCHEMA,
@@ -35,15 +36,19 @@ from app_version import (
 
 
 GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/releases/latest"
+GITEE_API_URL = f"https://gitee.com/api/v5/repos/{GITEE_REPOSITORY}/releases/latest"
+GITEE_MANIFEST_NAME = "gitee-update-manifest.json"
 AUTO_CHECK_INTERVAL_SECONDS = 24 * 60 * 60
 DOWNLOAD_CHUNK_BYTES = 1024 * 1024
 MAX_PACKAGE_BYTES = 4 * 1024 * 1024 * 1024
 MAX_UNPACKED_BYTES = 12 * 1024 * 1024 * 1024
 MAX_ZIP_ENTRIES = 100_000
+MAX_GITEE_PART_BYTES = 95 * 1024 * 1024
+MAX_GITEE_PARTS = 64
 TOKEN_PATTERN = re.compile(r"^[0-9a-f]{32}$")
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 CERTIFICATE_ERROR_MESSAGE = (
-    "Windows 系统证书库和程序内置证书库都无法验证 GitHub 的 HTTPS 证书。"
+    "Windows 系统证书库和程序内置证书库都无法验证更新服务器的 HTTPS 证书。"
     "请检查系统时间、Windows 根证书更新或 HTTPS 代理证书后重试；"
     "程序不会关闭证书验证。"
 )
@@ -51,6 +56,10 @@ CERTIFICATE_ERROR_MESSAGE = (
 
 class UpdateError(RuntimeError):
     """Base class for update failures safe to show to the user."""
+
+
+class UpdateSourceUnavailable(UpdateError):
+    """A verified update source could not be reached."""
 
 
 class UpdateCancelled(UpdateError):
@@ -75,11 +84,21 @@ class UpdateManifest:
 
 
 @dataclass(frozen=True)
+class UpdatePackagePart:
+    name: str
+    sha256: str
+    bytes: int
+    url: str = ""
+
+
+@dataclass(frozen=True)
 class UpdateCandidate:
     manifest: UpdateManifest
-    package_url: str
+    package_url: str | None
     published_at: str
     tag_name: str = ""
+    source: str = "github"
+    parts: tuple[UpdatePackagePart, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -191,17 +210,72 @@ def parse_manifest(payload: bytes) -> UpdateManifest:
     )
 
 
-def _asset_map(release: dict[str, object]) -> dict[str, dict[str, object]]:
+def parse_gitee_manifest(
+    payload: bytes,
+) -> tuple[UpdateManifest, tuple[UpdatePackagePart, ...]]:
+    data = _read_json_object(payload, "Gitee 分卷更新清单")
+    base_fields = {
+        "schema", "version", "version_code", "package", "sha256", "bytes",
+        "unpacked_bytes", "release_url", "notes",
+    }
+    expected = base_fields | {"source", "repository", "parts"}
+    if set(data) != expected:
+        missing = sorted(expected - set(data))
+        unknown = sorted(set(data) - expected)
+        details = []
+        if missing:
+            details.append("缺少 " + ", ".join(missing))
+        if unknown:
+            details.append("未知 " + ", ".join(unknown))
+        raise UpdateError("Gitee 分卷更新清单字段不符：" + "；".join(details))
+    if data["source"] != "gitee-split" or data["repository"] != GITEE_REPOSITORY:
+        raise UpdateError("Gitee 分卷更新清单来源不符")
+    manifest = parse_manifest(
+        json.dumps({key: data[key] for key in base_fields}).encode("utf-8")
+    )
+    expected_release_url = (
+        f"https://gitee.com/{GITEE_REPOSITORY}/releases/tag/v{manifest.version}"
+    )
+    if manifest.release_url != expected_release_url:
+        raise UpdateError("Gitee Release 页面与版本不一致")
+    raw_parts = data["parts"]
+    if not isinstance(raw_parts, list) or not 1 <= len(raw_parts) <= MAX_GITEE_PARTS:
+        raise UpdateError("Gitee 分卷数量无效")
+    parts: list[UpdatePackagePart] = []
+    total = 0
+    for index, value in enumerate(raw_parts, 1):
+        if not isinstance(value, dict) or set(value) != {"name", "sha256", "bytes"}:
+            raise UpdateError(f"Gitee 第 {index} 个分卷记录无效")
+        expected_name = f"{manifest.package}.{index:03d}"
+        name = value["name"]
+        digest = value["sha256"]
+        size = value["bytes"]
+        if name != expected_name:
+            raise UpdateError(f"Gitee 分卷名称或顺序无效：{name!r}")
+        if not isinstance(digest, str) or not SHA256_PATTERN.fullmatch(digest):
+            raise UpdateError(f"Gitee 分卷 SHA-256 无效：{expected_name}")
+        if type(size) is not int or not 0 < size <= MAX_GITEE_PART_BYTES:
+            raise UpdateError(f"Gitee 分卷大小无效：{expected_name}")
+        total += size
+        parts.append(UpdatePackagePart(name, digest, size))
+    if total != manifest.bytes:
+        raise UpdateError("Gitee 分卷总大小与完整更新包不一致")
+    return manifest, tuple(parts)
+
+
+def _asset_map(
+    release: dict[str, object], source_name: str = "GitHub",
+) -> dict[str, dict[str, object]]:
     assets = release.get("assets")
     if not isinstance(assets, list):
-        raise UpdateError("GitHub Release 缺少资产列表")
+        raise UpdateError(f"{source_name} Release 缺少资产列表")
     result: dict[str, dict[str, object]] = {}
     for item in assets:
         if not isinstance(item, dict) or not isinstance(item.get("name"), str):
-            raise UpdateError("GitHub Release 资产信息无效")
+            raise UpdateError(f"{source_name} Release 资产信息无效")
         name = item["name"]
         if name in result:
-            raise UpdateError(f"GitHub Release 含重复资产：{name}")
+            raise UpdateError(f"{source_name} Release 含重复资产：{name}")
         result[name] = item
     return result
 
@@ -255,6 +329,63 @@ def candidate_from_release(
     )
 
 
+def _validated_gitee_asset_url(
+    asset: dict[str, object], expected_name: str, tag_name: str,
+) -> str:
+    if asset.get("name") != expected_name:
+        raise UpdateError(f"Gitee Release 资产名称不符：{expected_name}")
+    url = _validate_https_url(
+        asset.get("browser_download_url"), f"{expected_name} 下载地址",
+    )
+    parsed = urllib.parse.urlparse(url)
+    expected_prefix = f"/{GITEE_REPOSITORY}/releases/download/{tag_name}/"
+    if parsed.hostname != "gitee.com" or not parsed.path.startswith(expected_prefix):
+        raise UpdateError(f"{expected_name} 不是目标 Gitee 仓库的 Release 资产")
+    if urllib.parse.unquote(PurePosixPath(parsed.path).name) != expected_name:
+        raise UpdateError(f"{expected_name} 下载地址文件名不符")
+    return url
+
+
+def candidate_from_gitee_release(
+    release: dict[str, object],
+    manifest: UpdateManifest,
+    parts: tuple[UpdatePackagePart, ...],
+) -> UpdateCandidate:
+    if release.get("prerelease") is not False:
+        raise UpdateError("只允许使用正式 Gitee Release")
+    tag_name = release.get("tag_name")
+    if tag_name != f"v{manifest.version}":
+        raise UpdateError("Gitee Release 标签与更新清单版本不一致")
+    expected_release_url = (
+        f"https://gitee.com/{GITEE_REPOSITORY}/releases/tag/{tag_name}"
+    )
+    if manifest.release_url != expected_release_url:
+        raise UpdateError("Gitee Release 页面与更新清单不一致")
+    published_at = release.get("published_at") or release.get("created_at")
+    if not isinstance(published_at, str) or not published_at:
+        raise UpdateError("Gitee Release 发布时间无效")
+    assets = _asset_map(release, "Gitee")
+    manifest_asset = assets.get(GITEE_MANIFEST_NAME)
+    if manifest_asset is None:
+        raise UpdateError(f"Gitee Release 缺少 {GITEE_MANIFEST_NAME}")
+    _validated_gitee_asset_url(manifest_asset, GITEE_MANIFEST_NAME, tag_name)
+    with_urls: list[UpdatePackagePart] = []
+    for part in parts:
+        asset = assets.get(part.name)
+        if asset is None:
+            raise UpdateError(f"Gitee Release 缺少分卷：{part.name}")
+        url = _validated_gitee_asset_url(asset, part.name, tag_name)
+        with_urls.append(UpdatePackagePart(part.name, part.sha256, part.bytes, url))
+    return UpdateCandidate(
+        manifest=manifest,
+        package_url=None,
+        published_at=published_at,
+        tag_name=tag_name,
+        source="gitee",
+        parts=tuple(with_urls),
+    )
+
+
 def _atomic_json(path: Path, payload: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(path.name + f".{uuid.uuid4().hex}.tmp")
@@ -273,6 +404,8 @@ def _candidate_to_json(candidate: UpdateCandidate | None) -> dict[str, object] |
         "package_url": candidate.package_url,
         "published_at": candidate.published_at,
         "tag_name": candidate.tag_name,
+        "source": candidate.source,
+        "parts": [asdict(part) for part in candidate.parts],
     }
 
 
@@ -285,12 +418,46 @@ def _candidate_from_json(value: object) -> UpdateCandidate | None:
     if not isinstance(manifest_value, dict):
         raise UpdateError("更新缓存清单无效")
     manifest = parse_manifest(json.dumps(manifest_value).encode("utf-8"))
-    package_url = _validate_https_url(value.get("package_url"), "缓存下载地址")
     published_at = value.get("published_at")
     tag_name = value.get("tag_name")
     if not isinstance(published_at, str) or not isinstance(tag_name, str):
         raise UpdateError("更新缓存字段无效")
-    return UpdateCandidate(manifest, package_url, published_at, tag_name)
+    source = value.get("source", "github")
+    raw_parts = value.get("parts", [])
+    if source == "github":
+        package_url = _validate_https_url(value.get("package_url"), "缓存下载地址")
+        if raw_parts not in (None, []):
+            raise UpdateError("GitHub 更新缓存不应包含分卷")
+        return UpdateCandidate(manifest, package_url, published_at, tag_name)
+    if source != "gitee" or value.get("package_url") is not None:
+        raise UpdateError("更新缓存来源无效")
+    if not isinstance(raw_parts, list) or not raw_parts:
+        raise UpdateError("Gitee 更新缓存缺少分卷")
+    parts: list[UpdatePackagePart] = []
+    total = 0
+    for index, item in enumerate(raw_parts, 1):
+        if not isinstance(item, dict) or set(item) != {"name", "sha256", "bytes", "url"}:
+            raise UpdateError("Gitee 更新缓存分卷字段无效")
+        name = item["name"]
+        digest = item["sha256"]
+        size = item["bytes"]
+        expected_name = f"{manifest.package}.{index:03d}"
+        if name != expected_name or not isinstance(digest, str) or not SHA256_PATTERN.fullmatch(digest):
+            raise UpdateError("Gitee 更新缓存分卷记录无效")
+        if type(size) is not int or not 0 < size <= MAX_GITEE_PART_BYTES:
+            raise UpdateError("Gitee 更新缓存分卷大小无效")
+        url = _validated_gitee_asset_url(
+            {"name": name, "browser_download_url": item["url"]},
+            expected_name,
+            tag_name,
+        )
+        total += size
+        parts.append(UpdatePackagePart(name, digest, size, url))
+    if total != manifest.bytes:
+        raise UpdateError("Gitee 更新缓存分卷总大小无效")
+    return UpdateCandidate(
+        manifest, None, published_at, tag_name, "gitee", tuple(parts),
+    )
 
 
 def _response_header(response: object, name: str) -> str | None:
@@ -376,8 +543,38 @@ def _open(opener: Callable, request: urllib.request.Request, timeout: float):
             return opener(request)
     except Exception as exc:
         if _is_certificate_error(exc):
-            raise UpdateError(CERTIFICATE_ERROR_MESSAGE) from exc
+            raise UpdateSourceUnavailable(CERTIFICATE_ERROR_MESSAGE) from exc
         raise
+
+
+def fetch_gitee_candidate(
+    *, opener: Callable = _system_urlopen,
+) -> UpdateCandidate:
+    headers = {
+        "Accept": "application/json",
+        "User-Agent": "FRLG-Auto-RNG-Updater",
+    }
+    request = urllib.request.Request(GITEE_API_URL, headers=headers)
+    with _open(opener, request, 15.0) as response:
+        release_payload = _read_response(response, 2 * 1024 * 1024)
+    release = _read_json_object(release_payload, "Gitee Release")
+    tag_name = release.get("tag_name")
+    if not isinstance(tag_name, str) or not re.fullmatch(
+        r"v[0-9]+(?:\.[0-9]+){1,3}", tag_name,
+    ):
+        raise UpdateError("Gitee Release 标签无效")
+    assets = _asset_map(release, "Gitee")
+    manifest_asset = assets.get(GITEE_MANIFEST_NAME)
+    if manifest_asset is None:
+        raise UpdateError(f"Gitee Release 缺少 {GITEE_MANIFEST_NAME}")
+    manifest_url = _validated_gitee_asset_url(
+        manifest_asset, GITEE_MANIFEST_NAME, tag_name,
+    )
+    manifest_request = urllib.request.Request(manifest_url, headers=headers)
+    with _open(opener, manifest_request, 12.0) as response:
+        manifest_payload = _read_response(response, 256 * 1024)
+    manifest, parts = parse_gitee_manifest(manifest_payload)
+    return candidate_from_gitee_release(release, manifest, parts)
 
 
 def check_for_update(
@@ -417,6 +614,7 @@ def check_for_update(
         headers["If-None-Match"] = cache["etag"]
     request = urllib.request.Request(GITHUB_API_URL, headers=headers)
     response_etag = None
+    github_succeeded = False
     try:
         try:
             with _open(opener, request, 15.0) as response:
@@ -455,10 +653,32 @@ def check_for_update(
                 )
             else:
                 result = UpdateCheckResult("current", "当前已是最新正式版。")
-    except (OSError, urllib.error.URLError, urllib.error.HTTPError, UpdateError) as exc:
-        # Keep the last good cache intact.  The GUI can show this result for a
-        # manual check without turning a transient network failure into a crash.
-        return UpdateCheckResult("error", f"检查程序更新失败：{exc}")
+        github_succeeded = True
+    except (OSError, urllib.error.URLError, urllib.error.HTTPError, UpdateError) as github_exc:
+        try:
+            candidate = fetch_gitee_candidate(opener=opener)
+            if candidate.manifest.version_code > current_version_code:
+                result = UpdateCheckResult(
+                    "available",
+                    f"GitHub 暂时不可用，已从 Gitee 备用源发现新版本 {candidate.manifest.version}。",
+                    candidate,
+                )
+            elif candidate.manifest.version_code == current_version_code:
+                result = UpdateCheckResult(
+                    "current",
+                    "GitHub 暂时不可用；Gitee 备用源确认当前已是最新正式版。",
+                )
+            else:
+                raise UpdateError(
+                    f"Gitee 备用源仍停留在 {candidate.manifest.version}，无法确认最新版本"
+                )
+        except (OSError, urllib.error.URLError, urllib.error.HTTPError, UpdateError) as gitee_exc:
+            # Keep the last good cache intact.  A transient failure in both
+            # sources must not overwrite the last verified candidate.
+            return UpdateCheckResult(
+                "error",
+                f"检查程序更新失败：GitHub：{github_exc}；Gitee 备用源：{gitee_exc}",
+            )
 
     _atomic_json(
         cache_path,
@@ -466,7 +686,10 @@ def check_for_update(
             "last_checked": now_value,
             "checked_at": now_value,
             "current_version_code": current_version_code,
-            "etag": response_etag or cache.get("etag"),
+            # A Gitee result must never be paired with an older GitHub ETag;
+            # otherwise a later GitHub 304 could incorrectly reuse the mirror
+            # candidate as if GitHub had verified it.
+            "etag": (response_etag or cache.get("etag")) if github_succeeded else None,
             "release_url": result.candidate.manifest.release_url if result.candidate else None,
             "status": result.status,
             "message": result.message,
@@ -486,6 +709,74 @@ def required_free_bytes(manifest: UpdateManifest) -> int:
     return required_free_space(manifest)
 
 
+def _stream_candidate_package(
+    candidate: UpdateCandidate,
+    partial: Path,
+    *,
+    opener: Callable,
+    progress: Callable[[int, int], None] | None,
+    cancelled: Callable[[], bool] | None,
+) -> None:
+    if candidate.parts:
+        if candidate.source != "gitee" or candidate.package_url is not None:
+            raise UpdateError("分卷更新候选来源无效")
+        sources = tuple((part.url, part) for part in candidate.parts)
+    else:
+        if candidate.source != "github" or not candidate.package_url:
+            raise UpdateError("单文件更新候选来源无效")
+        sources = ((candidate.package_url, None),)
+    total_digest = hashlib.sha256()
+    total_received = 0
+    with partial.open("xb") as output:
+        for url, part in sources:
+            if cancelled is not None and cancelled():
+                raise UpdateCancelled("程序更新下载已取消")
+            request = urllib.request.Request(
+                url,
+                headers={"User-Agent": "FRLG-Auto-RNG-Updater"},
+            )
+            part_digest = hashlib.sha256()
+            part_received = 0
+            with _open(opener, request, 30.0) as response:
+                while True:
+                    if cancelled is not None and cancelled():
+                        raise UpdateCancelled("程序更新下载已取消")
+                    chunk = response.read(DOWNLOAD_CHUNK_BYTES)
+                    if not chunk:
+                        break
+                    part_received += len(chunk)
+                    total_received += len(chunk)
+                    part_limit = part.bytes if part is not None else candidate.manifest.bytes
+                    if part_received > part_limit or total_received > candidate.manifest.bytes:
+                        raise UpdateError("下载大小超过更新清单")
+                    output.write(chunk)
+                    part_digest.update(chunk)
+                    total_digest.update(chunk)
+                    if progress is not None:
+                        progress(total_received, candidate.manifest.bytes)
+            if part is not None:
+                if part_received != part.bytes:
+                    raise UpdateError(
+                        f"Gitee 分卷大小不符：{part.name} 应为 {part.bytes}，实际 {part_received}"
+                    )
+                if part_digest.hexdigest() != part.sha256:
+                    raise UpdateError(f"Gitee 分卷 SHA-256 校验失败：{part.name}")
+    if total_received != candidate.manifest.bytes:
+        raise UpdateError(
+            f"更新包大小不符：应为 {candidate.manifest.bytes}，实际 {total_received}"
+        )
+    if total_digest.hexdigest() != candidate.manifest.sha256:
+        raise UpdateError("更新包 SHA-256 校验失败")
+
+
+def _same_package(left: UpdateManifest, right: UpdateManifest) -> bool:
+    fields = (
+        "schema", "version", "version_code", "package", "sha256", "bytes",
+        "unpacked_bytes",
+    )
+    return all(getattr(left, field) == getattr(right, field) for field in fields)
+
+
 def download_package(
     candidate: UpdateCandidate,
     destination: Path,
@@ -497,35 +788,39 @@ def download_package(
     destination = Path(destination)
     destination.parent.mkdir(parents=True, exist_ok=True)
     partial = destination.with_name(destination.name + ".part")
-    if partial.exists():
-        partial.unlink()
-    request = urllib.request.Request(
-        candidate.package_url,
-        headers={"User-Agent": "FRLG-Auto-RNG-Updater"},
-    )
-    digest = hashlib.sha256()
-    received = 0
+    partial.unlink(missing_ok=True)
     try:
-        with _open(opener, request, 30.0) as response, partial.open("xb") as output:
-            while True:
-                if cancelled is not None and cancelled():
-                    raise UpdateCancelled("程序更新下载已取消")
-                chunk = response.read(DOWNLOAD_CHUNK_BYTES)
-                if not chunk:
-                    break
-                received += len(chunk)
-                if received > candidate.manifest.bytes:
-                    raise UpdateError("下载大小超过更新清单")
-                output.write(chunk)
-                digest.update(chunk)
-                if progress is not None:
-                    progress(received, candidate.manifest.bytes)
-        if received != candidate.manifest.bytes:
-            raise UpdateError(
-                f"更新包大小不符：应为 {candidate.manifest.bytes}，实际 {received}"
+        try:
+            _stream_candidate_package(
+                candidate,
+                partial,
+                opener=opener,
+                progress=progress,
+                cancelled=cancelled,
             )
-        if digest.hexdigest() != candidate.manifest.sha256:
-            raise UpdateError("更新包 SHA-256 校验失败")
+        except (OSError, urllib.error.URLError, urllib.error.HTTPError, UpdateSourceUnavailable) as primary_exc:
+            if candidate.source != "github":
+                raise UpdateError(f"Gitee 备用源下载失败：{primary_exc}") from primary_exc
+            partial.unlink(missing_ok=True)
+            try:
+                mirror = fetch_gitee_candidate(opener=opener)
+                if not _same_package(candidate.manifest, mirror.manifest):
+                    raise UpdateError("Gitee 备用源与 GitHub 更新包版本或校验值不一致")
+                if progress is not None:
+                    progress(0, candidate.manifest.bytes)
+                _stream_candidate_package(
+                    mirror,
+                    partial,
+                    opener=opener,
+                    progress=progress,
+                    cancelled=cancelled,
+                )
+            except UpdateCancelled:
+                raise
+            except (OSError, urllib.error.URLError, urllib.error.HTTPError, UpdateError) as mirror_exc:
+                raise UpdateError(
+                    f"GitHub 下载失败：{primary_exc}；Gitee 备用源下载失败：{mirror_exc}"
+                ) from primary_exc
         partial.replace(destination)
         return destination
     except BaseException:
