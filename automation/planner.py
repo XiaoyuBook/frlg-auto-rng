@@ -65,6 +65,7 @@ class AutoSearchRequest:
     direct_mode: bool = False
     direct_seed: Optional[str] = None
     direct_advances: Optional[int] = None
+    dunsparce_three_segment: bool = False
 
     def validate(self) -> None:
         if self.game not in {
@@ -96,6 +97,8 @@ class AutoSearchRequest:
         species_id = get_species_id(self.pokemon)
         if not (1 <= species_id <= 386):
             raise ValueError("全国图鉴编号必须在 1-386 之间")
+        if type(self.dunsparce_three_segment) is not bool:
+            raise ValueError("土龙弟弟三节形态筛选必须是布尔值")
         valid_methods = {
             "Static", "Static 1", "Static 2", "Static 4",
             "Wild", "Wild 1", "Wild 2", "Wild 4", "All Wild Methods",
@@ -128,6 +131,11 @@ class AutoSearchRequest:
                 raise ValueError("指定消耗帧必须为非负整数")
         if "Wild" in self.method and not self.location:
             raise ValueError("野生搜索必须选择遭遇地点")
+        if self.dunsparce_three_segment:
+            if species_id != 206 or "Wild" not in self.method:
+                raise ValueError("“可进化为三节形态”仅适用于野生土龙弟弟")
+            if self.direct_mode:
+                raise ValueError("“可进化为三节形态”需要筛选搜索才能判定 PID")
         if "Wild" not in self.method and self.category == "Roaming" and not self.direct_mode:
             if self.method == "Static 2":
                 raise ValueError("火红/叶绿游走兽不支持 Static 2，请使用 Static 1 或 Static 4")
@@ -258,6 +266,15 @@ def _target_key(result: SearcherResult) -> tuple:
     return (result.target_seed, result.method, result.pid, result.pokemon, result.level)
 
 
+def is_three_segment_dunsparce_pid(pid: str | int) -> bool:
+    """Return whether a Gen 3 Dunsparce PID transfers to the rare form."""
+    try:
+        value = int(pid, 16) if isinstance(pid, str) else int(pid)
+    except (TypeError, ValueError):
+        return False
+    return 0 <= value <= 0xFFFFFFFF and value % 100 == 0
+
+
 def _candidate_key(item: tuple[SearcherResult, InitialSeedResult, int]) -> tuple:
     target, route, iv_total = item
     return (
@@ -385,6 +402,9 @@ def search_best_plan(
         for target in raw_targets:
             if cancel_check is not None and cancel_check():
                 raise SearchCancelledError("搜索已由用户取消")
+            if (request.dunsparce_three_segment
+                    and not is_three_segment_dunsparce_pid(target.pid)):
+                continue
             key = _target_key(target)
             if key in seen_targets:
                 continue
@@ -440,8 +460,9 @@ def search_best_plan(
         if cancel_check is not None and cancel_check():
             raise SearchCancelledError("搜索已由用户取消")
         if matching_outcomes == 0:
+            rare_form = "、可进化为三节形态" if request.dunsparce_three_segment else ""
             raise NoMatchingTargetError(
-                "Ten Lines 没有找到满足宝可梦、闪光、性格和个体值条件的结果"
+                f"Ten Lines 没有找到满足宝可梦、闪光、性格、个体值{rare_form}条件的结果"
             )
         raise NoReachablePlanError(
             f"找到了 {matching_outcomes} 个个体结果，但没有初始 Seed 方案落在 "

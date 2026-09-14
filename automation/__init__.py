@@ -8,6 +8,7 @@ from .planner import (
     RunPlan,
     SearchCancelledError,
     SearchWorkLimitError,
+    is_three_segment_dunsparce_pid,
     search_best_plan,
 )
 from .support import RouteSupport, RouteSupportLevel, get_route_support
@@ -147,6 +148,7 @@ __all__ = [
     "RunPlan",
     "SearchCancelledError",
     "SearchWorkLimitError",
+    "is_three_segment_dunsparce_pid",
     "STATIC_CATEGORIES_118",
     "PLANNER_STATIC_CATEGORIES",
     "STATIC_TARGETS_BY_GAME",

@@ -206,7 +206,8 @@ class FrlgWindow(FrlgPreviewWindow):
         for pair in self.iv_ranges:
             for widget in pair:
                 widget.valueChanged.connect(self.invalidate)
-        for widget in (*self.capture_checks, self.home_buffer_check, self.precalibration_check, self.advanced_check, self.item_check):
+        for widget in (*self.capture_checks, self.home_buffer_check, self.precalibration_check,
+                       self.advanced_check, self.item_check, self.dunsparce_three_segment_check):
             widget.toggled.connect(self.invalidate)
 
     @staticmethod
@@ -265,6 +266,7 @@ class FrlgWindow(FrlgPreviewWindow):
         self._fill(self.fields["wild_species"], [(SPECIES_EN_TO_ZH.get(n, n), n) for n in dict.fromkeys(names)], "Pikachu")
         self.fields["wild_species"].setEnabled(bool(names))
         self._populate_abilities()
+        self._refresh_wild_controls()
 
     def _populate_abilities(self):
         species = self.fields["wild_species"].currentData()
@@ -311,6 +313,7 @@ class FrlgWindow(FrlgPreviewWindow):
             gender=FILTER_GENDER_ZH_TO_EN[f["wild_gender"].currentText()], hidden_type=FILTER_TYPE_ZH_TO_EN[f["wild_hidden"].currentText()],
             ability=f["wild_ability"].currentData() or "Any", seed_mode=seed_index - 1 if seed_index > 0 else None,
             direct_mode=direct, direct_seed=f["wild_direct_seed"].text().strip() if direct else "", direct_advances=integer("wild_direct_adv", "指定消耗帧") if direct else None,
+            dunsparce_three_segment=self.dunsparce_three_segment_check.isChecked(),
         )
         advanced = self.advanced_check.isChecked()
         options = EasyCon118Options(
@@ -391,7 +394,8 @@ class FrlgWindow(FrlgPreviewWindow):
             ivs = plan.target.ivs
             nature = {v: k for k, v in FILTER_NATURE_ZH_TO_EN.items()}.get(plan.target.nature, plan.target.nature)
             gender = {v: k for k, v in FILTER_GENDER_ZH_TO_EN.items()}.get(plan.target.gender, plan.target.gender)
-            self.summary_note.setText(f"IV {ivs.hp} / {ivs.attack} / {ivs.defense} / {ivs.sp_attack} / {ivs.sp_defense} / {ivs.speed}\n{nature} · {ABILITY_EN_TO_ZH.get(plan.target.ability, plan.target.ability)} · {gender}")
+            rare_form = " · 三节形态" if plan.request.dunsparce_three_segment else ""
+            self.summary_note.setText(f"IV {ivs.hp} / {ivs.attack} / {ivs.defense} / {ivs.sp_attack} / {ivs.sp_defense} / {ivs.speed}\n{nature} · {ABILITY_EN_TO_ZH.get(plan.target.ability, plan.target.ability)} · {gender}{rare_form}")
             if plan.request.direct_mode:
                 self.metric_values[2].setText("—")
                 self.summary_note.setText("指定模式未计算个体与闪光结果；使用所填 Seed 和消耗帧。")
@@ -422,7 +426,7 @@ class FrlgWindow(FrlgPreviewWindow):
         if self.running:
             if self.run_input_states is None:
                 widgets = list(self.fields.values()) + [self.profile_selector, self.advanced_check, self.home_buffer_check,
-                    self.precalibration_check, self.item_check, *self.capture_checks,
+                    self.precalibration_check, self.item_check, self.dunsparce_three_segment_check, *self.capture_checks,
                     *(widget for pair in self.iv_ranges for widget in pair),
                     *(button for key, button in self.nav_buttons.items() if key not in ("wild", "logs", "tid_records"))]
                 self.run_input_states = {widget: widget.isEnabled() for widget in widgets}

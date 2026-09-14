@@ -71,6 +71,19 @@ class PySideBackendTests(unittest.TestCase):
         self.assertEqual(w.collect_inputs().request.method, "Static 1")
         self.assertFalse(w.item_check.isChecked())
 
+    def test_wild_dunsparce_exposes_three_segment_filter_and_collects_it(self):
+        w = self.window
+        location = w.fields["wild_location"]
+        location.setCurrentIndex(location.findData("Three Island Port"))
+        species = w.fields["wild_species"]
+        species.setCurrentIndex(species.findData("Dunsparce"))
+        self.assertTrue(w.dunsparce_three_segment_check.isEnabled())
+        w.dunsparce_three_segment_check.setChecked(True)
+        self.assertTrue(w.collect_inputs().request.dunsparce_three_segment)
+        w.fields["wild_search_mode"].setCurrentIndex(1)
+        self.assertFalse(w.dunsparce_three_segment_check.isChecked())
+        self.assertFalse(w.dunsparce_three_segment_check.isEnabled())
+
     def test_no_placeholder_device_is_treated_as_connected(self):
         w = self.window
         w.prepared = self.prepared()

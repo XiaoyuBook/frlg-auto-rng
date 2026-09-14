@@ -17,6 +17,7 @@ from automation.planner import (
     NoMatchingTargetError,
     NoReachablePlanError,
     SearchCancelledError,
+    is_three_segment_dunsparce_pid,
     search_best_plan,
 )
 from automation.seed_modes import seed_mode_to_settings, settings_to_seed_mode
@@ -136,6 +137,47 @@ class PlannerSelectionTests(unittest.TestCase):
         item = target("00000001", (31, 31, 31, 31, 31, 31))
         with self.assertRaises(NoReachablePlanError):
             self.run_plan([item], {item.target_seed: []})
+
+    def test_dunsparce_three_segment_filter_uses_full_pid_modulo_100(self):
+        common_ivs = (31, 31, 31, 31, 31, 31)
+        ordinary = target("00000001", common_ivs, pid="00000065")
+        rare = target("00000002", common_ivs, pid="00000064")
+        result = self.run_plan(
+            [ordinary, rare],
+            {
+                ordinary.target_seed: [route("1111", 10)],
+                rare.target_seed: [route("2222", 20)],
+            },
+            pokemon="Dunsparce",
+            dunsparce_three_segment=True,
+        )
+        self.assertEqual(result.plan.target.pid, "00000064")
+        self.assertEqual(result.matching_outcomes, 1)
+        self.assertTrue(is_three_segment_dunsparce_pid("00000064"))
+        self.assertFalse(is_three_segment_dunsparce_pid("00000065"))
+
+    def test_dunsparce_three_segment_filter_reports_no_eligible_pid(self):
+        ordinary = target("00000001", (31,) * 6, pid="12345678")
+        with self.assertRaisesRegex(NoMatchingTargetError, "三节形态"):
+            self.run_plan(
+                [ordinary],
+                {ordinary.target_seed: [route("1111", 10)]},
+                pokemon="Dunsparce",
+                dunsparce_three_segment=True,
+            )
+
+    def test_dunsparce_three_segment_filter_rejects_wrong_target_or_direct_mode(self):
+        with self.assertRaisesRegex(ValueError, "仅适用于野生土龙弟弟"):
+            request(dunsparce_three_segment=True).validate()
+        with self.assertRaisesRegex(ValueError, "需要筛选搜索"):
+            request(
+                pokemon="Dunsparce",
+                dunsparce_three_segment=True,
+                direct_mode=True,
+                direct_seed="1234",
+                direct_advances=100,
+                seed_mode=0,
+            ).validate()
 
     def test_tiered_search_can_be_cancelled(self):
         with self.assertRaises(SearchCancelledError):

@@ -1171,6 +1171,7 @@ class FrlgPreviewWindow(QMainWindow):
             (self.profile_chip, "profile"),
             (self.home_buffer_check, "adaptive"), (self.precalibration_check, "precalibration"),
             (self.advanced_check, "advanced"), (self.advanced_button, "advanced"),
+            (self.dunsparce_three_segment_check, "dunsparce_three_segment"),
             (self.sid_ack, "sid_ack"), (self.egg_ack, "egg_ack"),
             (self.item_check, "item"), (self.traversal_check, "traversal"),
             (self.tid_flow_check, "starter"), (self.tid_any_check, "tid_any"),
@@ -1299,6 +1300,9 @@ class FrlgPreviewWindow(QMainWindow):
             trait_grid.setColumnStretch(column, 3 if key in ("wild_shiny", "wild_ability") else 2)
         iv.layout.addLayout(trait_grid)
         self.fields["wild_ability"].setEnabled(False)
+        self.dunsparce_three_segment_check = self._check("可进化为三节形态（土龙节节）")
+        self.dunsparce_three_segment_check.setEnabled(False)
+        iv.layout.addWidget(self.dunsparce_three_segment_check)
         layout.addWidget(iv)
 
         filters = Card("搜索范围", "选择搜索范围，或直接使用已有的 Seed 和帧数。")
@@ -1344,6 +1348,7 @@ class FrlgPreviewWindow(QMainWindow):
         self.traversal_options.layout.addWidget(_label("断点读取尚未接入；此处未检查本机 SID 遍历进度。", role="muted"))
         layout.addWidget(self.traversal_options)
         self.fields["wild_method"].currentIndexChanged.connect(self._refresh_wild_type)
+        self.fields["wild_species"].currentIndexChanged.connect(self._refresh_wild_controls)
         self.fields["wild_search_mode"].currentIndexChanged.connect(self._refresh_wild_controls)
         self.item_check.toggled.connect(self._refresh_wild_controls)
         self.traversal_check.toggled.connect(self._refresh_wild_controls)
@@ -1388,6 +1393,11 @@ class FrlgPreviewWindow(QMainWindow):
         direct = self.fields["wild_search_mode"].currentIndex() == 1
         self.fields["wild_direct_seed"].setEnabled(direct)
         self.fields["wild_direct_adv"].setEnabled(direct)
+        species = self.fields["wild_species"].currentData() or self.fields["wild_species"].currentText()
+        three_segment_available = wild and not direct and species in {"Dunsparce", "土龙弟弟"}
+        if not three_segment_available:
+            self.dunsparce_three_segment_check.setChecked(False)
+        self.dunsparce_three_segment_check.setEnabled(three_segment_available)
 
     def _build_sid_page(self) -> QWidget:
         page, layout = self._page_canvas()

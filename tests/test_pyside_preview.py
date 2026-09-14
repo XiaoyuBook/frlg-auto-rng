@@ -159,6 +159,18 @@ class PySidePreviewInteractionTests(unittest.TestCase):
         window.fields["wild_search_mode"].setCurrentIndex(1)
         self.assertTrue(window.fields["wild_direct_seed"].isEnabled())
 
+        species = window.fields["wild_species"]
+        species.addItem("土龙弟弟", "Dunsparce")
+        species.setCurrentIndex(species.count() - 1)
+        self.assertFalse(window.dunsparce_three_segment_check.isEnabled())
+        window.fields["wild_method"].setCurrentIndex(0)
+        window.fields["wild_search_mode"].setCurrentIndex(0)
+        self.assertTrue(window.dunsparce_three_segment_check.isEnabled())
+        window.dunsparce_three_segment_check.setChecked(True)
+        window.fields["wild_search_mode"].setCurrentIndex(1)
+        self.assertFalse(window.dunsparce_three_segment_check.isChecked())
+        self.assertFalse(window.dunsparce_three_segment_check.isEnabled())
+
     def test_tid_exhaustive_flow_and_manual_delay(self):
         window = self.window
         self.assertTrue(window.tid_special_checks[2].isChecked())

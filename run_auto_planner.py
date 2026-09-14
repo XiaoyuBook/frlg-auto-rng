@@ -76,6 +76,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--gender", choices=("Any", "M", "F", "-"), default="Any")
     parser.add_argument("--ability", default="Any")
     parser.add_argument("--hidden-type", default="Any")
+    parser.add_argument(
+        "--dunsparce-three-segment",
+        action="store_true",
+        help="野生土龙弟弟只保留可进化为三节形态的 PID",
+    )
     parser.add_argument("--seed-mode", type=parse_seed_mode, default=None, metavar="auto|0-9")
     parser.add_argument("--seed-candidates", type=int, default=1)
     parser.add_argument("--search-work-limit", type=int, default=25_000_000)
@@ -164,6 +169,7 @@ def main(argv=None) -> int:
         initial_seed_result_count=args.seed_candidates,
         max_iv_combinations=args.search_work_limit,
         seed_mode=args.seed_mode,
+        dunsparce_three_segment=args.dunsparce_three_segment,
     )
 
     print("正在按 IV 总和从高到低搜索 Ten Lines 结果……", flush=True)
