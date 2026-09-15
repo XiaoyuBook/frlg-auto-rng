@@ -133,7 +133,10 @@ class StartupPathTests(unittest.TestCase):
                     window.deleteLater()
                     self.app.processEvents()
             restored = json.loads(settings.read_text(encoding="utf-8"))
-            self.assertEqual(restored, {key: str(value) for key, value in defaults.items()})
+            self.assertEqual(restored, {
+                **{key: str(value) for key, value in defaults.items()},
+                "update_source": "auto",
+            })
 
     def test_startup_recovers_after_previous_package_is_removed(self):
         self.check_startup(old_exists=False)

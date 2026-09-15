@@ -35,6 +35,8 @@ class AppUpdateController(QObject):
         self.executable = Path(sys.executable).resolve()
         self.candidate: UpdateCandidate | None = None
         self.button = window.actions["检查程序更新"]
+        self.source_combo = window.fields["update_source"]
+        self.source_combo.currentIndexChanged.connect(self._source_changed)
         self.status = self._find_status_label()
         self.status.setObjectName("appUpdateStatus")
         self.status.setText(
@@ -42,8 +44,8 @@ class AppUpdateController(QObject):
             + ("尚未检查程序更新。" if self.frozen else "源码模式不使用程序自更新。")
         )
         self.button.setToolTip(
-            "冻结绿色版优先通过 GitHub 正式 Release 整包更新；"
-            "GitHub 不可用时自动改用 Gitee Release 分卷；"
+            "可选自动（GitHub 优先）、仅 GitHub 或仅 Gitee；"
+            "手动指定更新源时不会跨源回退；"
             "配置、日志、进度和 Seed 表保留在用户目录。"
         )
         self.auto_timer = QTimer(self)
@@ -51,6 +53,21 @@ class AppUpdateController(QObject):
         self.auto_timer.timeout.connect(lambda: self.check(force=False))
         if self.frozen:
             self.auto_timer.start(1800)
+
+    def selected_source(self) -> str:
+        source = self.source_combo.currentData()
+        return source if source in {"auto", "github", "gitee"} else "auto"
+
+    def _source_changed(self, *_args) -> None:
+        self.candidate = None
+        labels = {
+            "auto": "自动（GitHub 优先）",
+            "github": "GitHub",
+            "gitee": "Gitee",
+        }
+        self.status.setText(
+            f"程序版本 {APP_VERSION} · 更新源已选择 {labels[self.selected_source()]}。"
+        )
 
     def _find_status_label(self) -> QLabel:
         labels = [
@@ -68,7 +85,7 @@ class AppUpdateController(QObject):
         size_mib = manifest.bytes / (1024 * 1024)
         notes = manifest.notes.strip() or "本版未提供额外更新说明。"
         source = (
-            f"Gitee 备用源（{len(candidate.parts)} 个分卷）"
+            f"Gitee（{len(candidate.parts)} 个分卷）"
             if candidate.source == "gitee"
             else "GitHub"
         )
@@ -91,12 +108,14 @@ class AppUpdateController(QObject):
             return
         if self.w.job is not None:
             return
+        source = self.selected_source()
         self.status.setText("正在检查程序更新……")
         started = self.w.launch_job(
             lambda _cancel, _status: check_for_update(
                 current_version_code=APP_VERSION_CODE,
                 cache_dir=self.w.paths.user / "updates",
                 force=force,
+                source=source,
             ),
             lambda result: self._checked(result, manual=force),
             "正在检查程序更新……",
@@ -144,6 +163,7 @@ class AppUpdateController(QObject):
                 "请先停止 EasyCon，再安装程序更新。",
             )
             return
+        source = self.selected_source()
 
         def work(cancel, status):
             last_percent = -1
@@ -164,6 +184,7 @@ class AppUpdateController(QObject):
                         updates_root=self.w.paths.user / "updates",
                         progress=progress,
                         cancelled=cancel,
+                        allow_gitee_fallback=source == "auto",
                     ),
                 )
             except UpdateCancelled as exc:
@@ -224,6 +245,7 @@ class AppUpdateController(QObject):
 
     def refresh(self) -> None:
         self.button.setEnabled(self.w.job is None)
+        self.source_combo.setEnabled(self.w.job is None)
 
     def close(self) -> None:
         self.auto_timer.stop()

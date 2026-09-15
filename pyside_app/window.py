@@ -687,6 +687,9 @@ class FrlgWindow(FrlgPreviewWindow):
                 self.fields[key].setText(restore_resource_path(
                     values.get(key), default, bundled_suffix=suffix, file=key == "ezcon",
                 ))
+            update_source = values.get("update_source", "auto")
+            source_index = self.fields["update_source"].findData(update_source)
+            self.fields["update_source"].setCurrentIndex(max(0, source_index))
         except (OSError, ValueError, TypeError):
             pass
 
@@ -700,7 +703,10 @@ class FrlgWindow(FrlgPreviewWindow):
             event.ignore()
             return
         try:
-            write_json_atomic(self.paths.user / "pyside6_settings.json", {key: self.fields[key].text() for key in ("source", "ezcon")})
+            write_json_atomic(self.paths.user / "pyside6_settings.json", {
+                **{key: self.fields[key].text() for key in ("source", "ezcon")},
+                "update_source": self.fields["update_source"].currentData() or "auto",
+            })
         except (OSError, ValueError) as exc:
             if not self.closing:
                 QMessageBox.warning(self, "设置未保存", str(exc))

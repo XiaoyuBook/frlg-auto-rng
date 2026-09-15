@@ -45,6 +45,7 @@ MAX_UNPACKED_BYTES = 12 * 1024 * 1024 * 1024
 MAX_ZIP_ENTRIES = 100_000
 MAX_GITEE_PART_BYTES = 95 * 1024 * 1024
 MAX_GITEE_PARTS = 64
+UPDATE_SOURCE_CHOICES = ("auto", "github", "gitee")
 TOKEN_PATTERN = re.compile(r"^[0-9a-f]{32}$")
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 CERTIFICATE_ERROR_MESSAGE = (
@@ -584,7 +585,10 @@ def check_for_update(
     force: bool = False,
     opener: Callable = _system_urlopen,
     now: float | None = None,
+    source: str = "auto",
 ) -> UpdateCheckResult:
+    if source not in UPDATE_SOURCE_CHOICES:
+        raise ValueError(f"不支持的程序更新源：{source}")
     now_value = time.time() if now is None else now
     cache_path = Path(cache_dir) / "check-cache.json"
     cache: dict[str, object] = {}
@@ -595,7 +599,7 @@ def check_for_update(
     except (OSError, json.JSONDecodeError):
         pass
 
-    if not force:
+    if not force and cache.get("selected_source", "auto") == source:
         last_checked = cache.get("last_checked", cache.get("checked_at"))
         if (
             isinstance(last_checked, (int, float))
@@ -604,6 +608,39 @@ def check_for_update(
             cached = _cached_result(cache, current_version_code=current_version_code)
             if cached is not None:
                 return cached
+
+    if source == "gitee":
+        try:
+            candidate = fetch_gitee_candidate(opener=opener)
+            if candidate.manifest.version_code > current_version_code:
+                result = UpdateCheckResult(
+                    "available",
+                    f"已从 Gitee 发现新版本 {candidate.manifest.version}。",
+                    candidate,
+                )
+            elif candidate.manifest.version_code == current_version_code:
+                result = UpdateCheckResult("current", "Gitee 确认当前已是最新正式版。")
+            else:
+                raise UpdateError(
+                    f"Gitee 仍停留在 {candidate.manifest.version}，早于当前版本"
+                )
+        except (OSError, urllib.error.URLError, urllib.error.HTTPError, UpdateError) as exc:
+            return UpdateCheckResult("error", f"检查程序更新失败：Gitee：{exc}")
+        _atomic_json(
+            cache_path,
+            {
+                "last_checked": now_value,
+                "checked_at": now_value,
+                "current_version_code": current_version_code,
+                "selected_source": source,
+                "etag": None,
+                "release_url": result.candidate.manifest.release_url if result.candidate else None,
+                "status": result.status,
+                "message": result.message,
+                "candidate": _candidate_to_json(result.candidate),
+            },
+        )
+        return result
 
     headers = {
         "Accept": "application/vnd.github+json",
@@ -655,6 +692,10 @@ def check_for_update(
                 result = UpdateCheckResult("current", "当前已是最新正式版。")
         github_succeeded = True
     except (OSError, urllib.error.URLError, urllib.error.HTTPError, UpdateError) as github_exc:
+        if source == "github":
+            return UpdateCheckResult(
+                "error", f"检查程序更新失败：GitHub：{github_exc}"
+            )
         try:
             candidate = fetch_gitee_candidate(opener=opener)
             if candidate.manifest.version_code > current_version_code:
@@ -686,6 +727,7 @@ def check_for_update(
             "last_checked": now_value,
             "checked_at": now_value,
             "current_version_code": current_version_code,
+            "selected_source": source,
             # A Gitee result must never be paired with an older GitHub ETag;
             # otherwise a later GitHub 304 could incorrectly reuse the mirror
             # candidate as if GitHub had verified it.
@@ -784,6 +826,7 @@ def download_package(
     opener: Callable = _system_urlopen,
     progress: Callable[[int, int], None] | None = None,
     cancelled: Callable[[], bool] | None = None,
+    allow_gitee_fallback: bool = True,
 ) -> Path:
     destination = Path(destination)
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -801,6 +844,8 @@ def download_package(
         except (OSError, urllib.error.URLError, urllib.error.HTTPError, UpdateSourceUnavailable) as primary_exc:
             if candidate.source != "github":
                 raise UpdateError(f"Gitee 备用源下载失败：{primary_exc}") from primary_exc
+            if not allow_gitee_fallback:
+                raise UpdateError(f"GitHub 更新源下载失败：{primary_exc}") from primary_exc
             partial.unlink(missing_ok=True)
             try:
                 mirror = fetch_gitee_candidate(opener=opener)
@@ -948,6 +993,7 @@ def prepare_update(
     probe: Callable[[Path, UpdateManifest], None] = _probe_staged_version,
     cancel_event: object | None = None,
     version_probe: Callable[[Path], dict[str, object]] | None = None,
+    allow_gitee_fallback: bool = True,
 ) -> PreparedUpdate:
     install_dir = Path(install_dir).resolve()
     updates_root = Path(updates_root).resolve()
@@ -983,6 +1029,7 @@ def prepare_update(
             opener=opener,
             progress=progress,
             cancelled=cancelled,
+            allow_gitee_fallback=allow_gitee_fallback,
         )
     if cancelled is not None and cancelled():
         raise UpdateCancelled("程序更新已取消")

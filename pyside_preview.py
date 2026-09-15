@@ -1517,6 +1517,10 @@ class FrlgPreviewWindow(QMainWindow):
             ("source", "2.0 自动乱数脚本包", _line(placeholder="路径选择尚未接入")),
             ("ezcon", "ezcon.exe", _line(placeholder="要求 1.6.4-a+9c86137")),
         ], 2)
+        update_source = _combo("自动（GitHub 优先）", "GitHub", "Gitee")
+        for index, value in enumerate(("auto", "github", "gitee")):
+            update_source.setItemData(index, value)
+        self._form(runtime, [("update_source", "程序更新源", update_source)], 1)
         self._actions(runtime, "选择脚本包", "选择 ezcon.exe", "检查/更新 Seed 表", "检查程序更新", "手柄键位", columns=2)
         runtime.layout.addWidget(_label("源码模式不使用程序自更新。", role="muted"))
         layout.addWidget(runtime)

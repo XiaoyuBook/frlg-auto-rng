@@ -53,7 +53,7 @@ class CompleteWindow(FrlgWindow):
             self.actions[key] = button
         self.reader = FormReader(self)
         for key, widget in self.fields.items():
-            if key not in self.input_keys:
+            if key not in self.input_keys and key != "update_source":
                 signal = widget.currentIndexChanged if isinstance(widget, QComboBox) else widget.valueChanged if isinstance(widget, QSpinBox) else widget.textChanged
                 signal.connect(self.invalidate)
         for widget in self.extra_checks():
@@ -421,7 +421,10 @@ class CompleteWindow(FrlgWindow):
             if hasattr(self, "accessories"):
                 self.accessories.timer.stop()
             try:
-                write_json_atomic(self.paths.user / "pyside6_settings.json", {key: self.fields[key].text() for key in ("source", "ezcon", "sid_source", "tid_source")})
+                write_json_atomic(self.paths.user / "pyside6_settings.json", {
+                    **{key: self.fields[key].text() for key in ("source", "ezcon", "sid_source", "tid_source")},
+                    "update_source": self.fields["update_source"].currentData() or "auto",
+                })
             except OSError:
                 pass  # Base close already reports settings write failures.
 

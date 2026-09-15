@@ -362,6 +362,55 @@ class AppUpdaterTests(unittest.TestCase):
         self.assertIn("api.github.com", urls[0])
         self.assertIn("gitee.com", urls[1])
 
+    def test_manual_gitee_source_never_contacts_github(self):
+        manifest = make_manifest()
+        responses = [
+            BytesResponse(json.dumps(make_gitee_release(manifest)).encode()),
+            BytesResponse(json.dumps(gitee_manifest_payload(manifest)).encode()),
+        ]
+        urls = []
+
+        def opener(request, **_kwargs):
+            urls.append(request.full_url)
+            return responses.pop(0)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            result = check_for_update(
+                cache_dir=Path(temporary),
+                opener=opener,
+                current_version_code=1,
+                force=True,
+                source="gitee",
+            )
+            saved = json.loads(
+                (Path(temporary) / "check-cache.json").read_text(encoding="utf-8")
+            )
+        self.assertEqual(result.status, "available")
+        self.assertEqual(result.candidate.source, "gitee")
+        self.assertTrue(urls)
+        self.assertTrue(all("gitee.com" in url for url in urls))
+        self.assertEqual(saved["selected_source"], "gitee")
+
+    def test_manual_github_source_does_not_fall_back_to_gitee(self):
+        urls = []
+
+        def opener(request, **_kwargs):
+            urls.append(request.full_url)
+            raise OSError("github offline")
+
+        with tempfile.TemporaryDirectory() as temporary:
+            result = check_for_update(
+                cache_dir=Path(temporary),
+                opener=opener,
+                current_version_code=1,
+                force=True,
+                source="github",
+            )
+        self.assertEqual(result.status, "error")
+        self.assertIn("GitHub", result.message)
+        self.assertEqual(len(urls), 1)
+        self.assertNotIn("Gitee", result.message)
+
     def test_required_space_has_safety_margin(self):
         manifest = make_manifest(bytes=10, unpacked_bytes=100)
         self.assertEqual(required_free_space(manifest), 10 + 100 + 256 * 1024 * 1024)
@@ -403,6 +452,33 @@ class AppUpdaterTests(unittest.TestCase):
                     opener=lambda *_args, **_kwargs: BytesResponse(content),
                 )
             self.assertFalse(destination.exists())
+
+    def test_manual_github_download_does_not_fall_back_to_gitee(self):
+        manifest = make_manifest()
+        primary = UpdateCandidate(
+            manifest,
+            "https://github.com/axechaso/frlg-auto-rng/releases/download/v0.2/"
+            + manifest.package,
+            "2026-09-13T12:00:00Z",
+            "v0.2",
+        )
+        calls = []
+
+        def opener(request, **_kwargs):
+            calls.append(request.full_url)
+            raise urllib.error.URLError("github download blocked")
+
+        with tempfile.TemporaryDirectory() as temporary:
+            destination = Path(temporary) / manifest.package
+            with self.assertRaisesRegex(UpdateError, "GitHub 更新源"):
+                download_package(
+                    primary,
+                    destination,
+                    opener=opener,
+                    allow_gitee_fallback=False,
+                )
+            self.assertFalse(destination.exists())
+        self.assertEqual(calls, [primary.package_url])
 
     def test_gitee_parts_stream_into_one_verified_package(self):
         contents = (b"first part", b"second part")

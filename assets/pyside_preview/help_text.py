@@ -85,7 +85,7 @@ HELP_TEXT = {
     "parity": ("帧奇偶调整", "F1/F2 方案在 F2 请求为奇数时使用 F1 +1、F2 −1；菜单方案保留 F1/F2，跳过回忆后开关菜单调整奇偶。孵蛋固定使用菜单方案。这里只选择生成参数，预览不执行按键。"),
     "precalibration": ("命中后更新预校准", "默认关闭，完整命中后保存 Seed 与可用帧修正，按游戏、机型、Seed 模式、启动、正式 / 时间轴入口和流程隔离。正式版普通定点只复用 Seed；时间轴定点、野生、孵蛋与御三家可复用帧修正，TID / SID 阶段不参与。预览不保存记录。"),
     "labels": ("设备标签覆盖与导入", "正式版按采集设备名称独立保存覆盖，只应用到生成工程，不修改原始标签包；可导入多个 .IL 文件或文件夹。此预览未接入导入、拖放、诊断或设备覆盖。"),
-    "update": ("整包程序更新", "正式绿色版每天最多自动检查一次稳定版，发现新版会先询问，再下载并校验 ZIP 大小与 SHA-256，退出后交换目录，失败恢复旧版；用户配置和日志不被替换。源码模式不使用自更新，此预览不检查更新。"),
+    "update": ("整包程序更新", "正式绿色版可选自动（GitHub 优先）、仅 GitHub 或仅 Gitee。自动模式在 GitHub 检查或下载失败时才改用 Gitee；手动指定时不跨源回退。发现新版会先询问，完整校验 ZIP 后才退出并安装；用户配置和日志不被替换。当前不支持通过该入口单独更新标签。"),
 }
 
 CARD_HELP = {
@@ -119,6 +119,7 @@ FIELD_HELP = {
     "starter_sound": "starter_settings", "starter_button": "starter_settings", "starter_seed_button": "starter_settings",
     "script_path": "script", "script_backend": "script", "script_entry": "entry",
     "source": "source", "sid_source": "sid_source", "tid_source": "tid_source", "output_log": "output_log",
+    "update_source": "update",
     "parity": "parity", "layers": "reverse", "togepi_reverse_adv": "reverse",
     "egg_reverse_seed": "reverse", "egg_reverse_min_adv": "reverse", "egg_reverse_max_adv": "reverse",
     **{f"expansion_{i}_{axis}": "reverse" for i in range(1, 4) for axis in ("seed", "adv")},

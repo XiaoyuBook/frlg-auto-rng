@@ -96,17 +96,36 @@ class PySideAppUpdateTests(unittest.TestCase):
         from PySide6.QtWidgets import QMessageBox
 
         self.window.app_update.frozen = True
+        self.window.fields["update_source"].setCurrentIndex(
+            self.window.fields["update_source"].findData("gitee")
+        )
         with (
             patch(
                 "pyside_app.app_update.check_for_update",
                 return_value=UpdateCheckResult("current", "当前已是最新正式版。"),
-            ),
+            ) as check,
             patch.object(QMessageBox, "information", return_value=QMessageBox.StandardButton.Ok),
         ):
             self.window.actions["检查程序更新"].click()
             self.wait_until(lambda: self.window.job is None)
 
         self.assertEqual(self.window.app_update.status.text(), "当前已是最新正式版。")
+        self.assertEqual(check.call_args.kwargs["source"], "gitee")
+
+    def test_update_source_defaults_to_auto_and_persists_manual_choice(self):
+        combo = self.window.fields["update_source"]
+        self.assertEqual(combo.currentData(), "auto")
+        self.assertEqual(
+            [combo.itemData(index) for index in range(combo.count())],
+            ["auto", "github", "gitee"],
+        )
+        combo.setCurrentIndex(combo.findData("gitee"))
+        self.assertIsNone(self.window.app_update.candidate)
+        self.window.close()
+        saved = json.loads(
+            (self.root / "user" / "pyside6_settings.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(saved["update_source"], "gitee")
 
     def test_running_process_defers_available_install(self):
         from PySide6.QtWidgets import QMessageBox
