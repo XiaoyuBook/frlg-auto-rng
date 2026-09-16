@@ -200,8 +200,9 @@ PREVIOUS_SCRIPT_SHA256S += (
 )
 PREVIOUS_SCRIPT_SHA256S += (
     "d607e8a2702be9a7cacecb24cb0bdf59083188954c76b5196e2b7e23b62647db",
+    "1e0da82c8c4d9b64e9b8768079ac14ff98c84c0ead1b3d87486912940175a129",
 )
-EXPECTED_SCRIPT_SHA256 = "1e0da82c8c4d9b64e9b8768079ac14ff98c84c0ead1b3d87486912940175a129"
+EXPECTED_SCRIPT_SHA256 = "79a7e2b9f3056057075564fbdd02aa495d87f52ee2fa9b0387fd6c2b1711153b"
 # Previously materialized 1.6.4-a corpora remain accepted as audited
 # compatibility inputs. This is not a general bypass for modified ECS files.
 SUPPORTED_RUNTIME_SCRIPT_SHA256S = (
@@ -309,6 +310,9 @@ SUPPORTED_RUNTIME_SCRIPT_SHA256S = (
     # September 12 source sync: NX-aware blackout/egg startup, counted roamer
     # route, and upstream first-hit majority/logging preserved by overlays.
     "f4b90d479dc4d5c02c5572580aa3321ffaa252d7f5b49c35ac814733624d5f65",
+    # September 16 source sync: NX-specific HOME_BUFFER, Safari first-round
+    # TV startup guard, and current Seed table metadata without backups.
+    "c31a0e05b72885ff03e4e98e5bdaca2ec92f7affcf26e2f0fd6e62d3efcfc1da",
 )
 
 
@@ -1329,7 +1333,7 @@ def copy_easycon118_extension_labels(label_dir: str | Path) -> None:
 
 
 def inspect_script_corpus(source_dir: str | Path) -> dict[str, Any]:
-    """Fingerprint both official 2.0 entry scripts and every file under ``lib``."""
+    """Fingerprint both entries and runtime libraries, excluding Seed backups."""
     source_dir = Path(source_dir)
     templates = [source_dir / name for name in EXPECTED_TEMPLATE_NAMES]
     missing_templates = [path.name for path in templates if not path.is_file()]
@@ -1343,7 +1347,10 @@ def inspect_script_corpus(source_dir: str | Path) -> dict[str, Any]:
     files = [(path.name, path) for path in templates]
     files.extend(
         (path.relative_to(source_dir).as_posix(), path)
-        for path in sorted(item for item in lib_dir.rglob("*") if item.is_file())
+        for path in sorted(
+            item for item in lib_dir.rglob("*")
+            if item.is_file() and item.relative_to(lib_dir).parts[0] != "seed_backup"
+        )
     )
     digest = hashlib.sha256()
     total_bytes = 0
@@ -3708,6 +3715,11 @@ def _apply_egg_restart_runtime_override_text(
 ) -> str:
     """Replace the whole egg restart helper with the audited original flow."""
     global_anchor = "$孵蛋库_正在关闭匹配 = 0\n"
+    nx2_global = "$孵蛋库_HOME_BUFFER正确退出NS2匹配 = 0\n"
+    if nx2_global not in library_text:
+        if library_text.count(global_anchor) != 1:
+            raise ValueError("孵蛋流程库缺少唯一的关闭状态全局变量")
+        library_text = library_text.replace(global_anchor, global_anchor + nx2_global, 1)
     if EGG_RESTART_GLOBALS not in library_text:
         if library_text.count(global_anchor) != 1:
             raise ValueError("孵蛋流程库缺少唯一的关闭状态全局变量，拒绝应用重启覆盖")

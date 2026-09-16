@@ -1,6 +1,8 @@
 # 1.6.4-a 正式版 HOME_BUFFER：可选稳定低分自适应，关闭时保持原 95 分逻辑。
 FUNC HOME_BUFFER
     $HOME_BUFFER尝试 = 0
+    $孵蛋HOME_BUFFER尝试 = 0
+    $孵蛋HOME_BUFFER失败 = 0
     $HOME_BUFFER未知连续次数 = 0
     $HOME_BUFFER锁定连续失败 = 0
     $HOME_BUFFER本轮待确认 = 0
@@ -11,8 +13,12 @@ FUNC HOME_BUFFER
     $HOME_BUFFER恢复未知 = 0
     FOR
         $HOME_BUFFER尝试 = $HOME_BUFFER尝试 + 1
+        $孵蛋HOME_BUFFER尝试 = $HOME_BUFFER尝试
         IF $HOME_BUFFER尝试 > 20
             PRINT HOME_BUFFER校准失败：20轮恢复或试探后仍未确认可用窗口
+            IF $静态或野生 == "孵蛋"
+                $孵蛋HOME_BUFFER失败 = 1
+            ENDIF
             RETURN
         ENDIF
         IF $HOME_BUFFER锁定启用 == 1
@@ -46,7 +52,7 @@ FUNC HOME_BUFFER
         ENDIF
         HOME 100
         WAIT 1500
-        $HOME_BUFFER识别状态 = HOME_BUFFER重采样状态(0)
+        $HOME_BUFFER识别状态 = HOME_BUFFER重采样状态(1)
         IF $HOME_BUFFER识别状态 == 1
             $HOME_BUFFER锁定启用 = 1
             $HOME_BUFFER锁定延迟 = $HOME_BUFFER延迟
@@ -60,6 +66,9 @@ FUNC HOME_BUFFER
         $HOME_BUFFER下一延迟 = HOME_BUFFER规划下一延迟($HOME_BUFFER识别状态)
         IF $HOME_BUFFER下一延迟 < 100 or $HOME_BUFFER下一延迟 > 3000
             PRINT HOME_BUFFER校准失败：下一延迟超出100-3000 ms
+            IF $静态或野生 == "孵蛋"
+                $孵蛋HOME_BUFFER失败 = 1
+            ENDIF
             RETURN
         ENDIF
         $HOME_BUFFER延迟 = $HOME_BUFFER下一延迟

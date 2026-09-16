@@ -15,9 +15,11 @@ if TYPE_CHECKING:
 
 
 TID_STARTER_SAVE_NAME = "NS火叶TID-SID到御三家球前存档-测试.ecs"
-TID_STARTER_SAVE_SHA256 = "c2e6f316e2ef66d4968fb26327761d7be29fcb593d15b72c017a2d356b454504"
+TID_STARTER_SAVE_SHA256 = "ca12bdc6ad08db2f2fe9473c9990bea105e523863067f0de8413ceeb0ab814b8"
 TID_STARTER_SAVE_SUPPORTED_SHA256 = {
     TID_STARTER_SAVE_SHA256,
+    # Previous combined source before NX-specific, bounded startup retries.
+    "c2e6f316e2ef66d4968fb26327761d7be29fcb593d15b72c017a2d356b454504",
     # Previous combined source before the English naming page wait became 600 ms.
     "ecfeaa5d2209992711afaa17e6967c287bd657b9c38085762b785db1b081baf5",
     "3b8cb56328817dcf5adec8c6271a530fae8aab3ce6b784b29a73d22797c366c5",
@@ -112,6 +114,32 @@ def _blocking_buttons(text: str) -> str:
 def _adaptive_home_buffer(module: str, prefix: str) -> str:
     from .tid_rng137 import TID_HOME_BUFFER_ADAPTIVE_PATH, _TID_HOME_BUFFER_ORIGINAL
 
+    if prefix == "TID" and "FUNC TID_HOME_BUFFER(): INT\n" in module:
+        # Keep r4's return values, 20-attempt limit, checked close calls and
+        # 50 ms steps. Only substitute the opt-in image classifier.
+        pattern = r"(?ms)^FUNC TID_HOME_BUFFER\(\): INT\n.*?^ENDFUNC"
+        matches = list(re.finditer(pattern, module))
+        if len(matches) != 1:
+            raise ValueError("TID共享HOME_BUFFER返回值结构不唯一")
+        match = matches[0]
+        body = match.group()
+        replacements = {
+            "        CALL TID_读取当前退出标签\n":
+                "        $HOME_BUFFER识别状态 = TID_HOME_BUFFER识别稳定状态()\n",
+            "IF $TID当前HOME_BUFFER正确退出 >= 95 and $TID当前错误退出 < 95":
+                "IF $HOME_BUFFER识别状态 == 1 and $HOME_BUFFER选中错误 < $HOME_BUFFER有效识图阈值",
+            "ELIF $TID当前错误退出 >= 95": "ELIF $HOME_BUFFER识别状态 == 3",
+            "ELIF $TID当前正确退出 >= 95": "ELIF $HOME_BUFFER识别状态 == 2",
+        }
+        for old, new in replacements.items():
+            if body.count(old) != 1:
+                raise ValueError("TID共享HOME_BUFFER识图分支与审计版本不一致")
+            body = body.replace(old, new, 1)
+        classifier = TID_HOME_BUFFER_ADAPTIVE_PATH.read_text(encoding="utf-8").split(
+            "\nFUNC HOME_BUFFER\n", 1
+        )[0].rstrip()
+        return module[:match.start()] + classifier + "\n\n" + body + module[match.end():]
+
     def convert(text: str) -> str:
         return _blocking_buttons(text).replace(
             "FUNC HOME_BUFFER", f"FUNC {prefix}_HOME_BUFFER"
@@ -158,7 +186,7 @@ def configure_starter_save_id(
                     PRINT TIDFLOW|ID|RIVAL_CUSTOM= & $Name_GREEN
                     BREAK 2""")
     if request.home_buffer_adaptive_threshold:
-        if "FUNC TID_HOME_BUFFER\n" in head:
+        if re.search(r"(?m)^FUNC TID_HOME_BUFFER(?:\(\): INT)?$", head):
             # r2 两种语言共用启动函数；只替换共享 HOME，不动 OP 检测/恢复。
             head = _adaptive_home_buffer(head, "TID")
         else:

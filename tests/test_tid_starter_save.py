@@ -11,7 +11,7 @@ from automation.tid_rng137 import (
 )
 from automation.tid_starter_save import (
     DEFAULT_TID_STARTER_SAVE_SOURCE, TID_STARTER_SAVE_NAME,
-    TID_STARTER_SAVE_SHA256, _blocking_buttons, configure_starter_save_id,
+    TID_STARTER_SAVE_SHA256, _blocking_buttons, _adaptive_home_buffer, configure_starter_save_id,
     render_starter_save_bridge,
     set_starter_save_sid_correction, split_tid_modules,
 )
@@ -88,6 +88,53 @@ def compact_fixture():
         "# =========================================================\n# 顶层入口收尾：ID 主体结束后才进入研究所桥接。\n",
         "",
     )
+
+
+class BoundedTidHomeBufferTests(unittest.TestCase):
+    def test_adaptive_classifier_preserves_return_protocol_and_retry_guards(self):
+        original = """FUNC TID_HOME_BUFFER(): INT
+    FOR
+        $TID_HOME_BUFFER尝试 += 1
+        IF $TID_HOME_BUFFER尝试 > $TID_HOME_BUFFER尝试上限
+            RETURN 0
+        ENDIF
+        CALL TID_读取当前退出标签
+        IF $TID当前HOME_BUFFER正确退出 >= 95 and $TID当前错误退出 < 95
+            RETURN 1
+        ELIF $TID当前错误退出 >= 95
+            B DOWN
+            WAIT 50
+            B UP
+        ELIF $TID当前正确退出 >= 95
+            $HOME_BUFFER延迟 -= 50
+        ELSE
+            $HOME_BUFFER延迟 += 50
+        ENDIF
+        $TID关闭游戏结果 = TID_关闭游戏()
+        IF $TID关闭游戏结果 == 0
+            RETURN 0
+        ENDIF
+        IF $HOME_BUFFER延迟 < 100 or $HOME_BUFFER延迟 > 3000
+            RETURN 0
+        ENDIF
+    NEXT
+    RETURN 0
+ENDFUNC
+"""
+        generated = _adaptive_home_buffer(original, "TID")
+        body = functions(generated)["TID_HOME_BUFFER"]
+        # Removing just the four intended substitutions must recover every
+        # action, delay, failure return and retry guard of the original.
+        restored = body.replace(
+            "$HOME_BUFFER识别状态 = TID_HOME_BUFFER识别稳定状态()", "CALL TID_读取当前退出标签"
+        ).replace(
+            "IF $HOME_BUFFER识别状态 == 1 and $HOME_BUFFER选中错误 < $HOME_BUFFER有效识图阈值",
+            "IF $TID当前HOME_BUFFER正确退出 >= 95 and $TID当前错误退出 < 95",
+        ).replace("ELIF $HOME_BUFFER识别状态 == 3", "ELIF $TID当前错误退出 >= 95").replace(
+            "ELIF $HOME_BUFFER识别状态 == 2", "ELIF $TID当前正确退出 >= 95"
+        )
+        self.assertEqual(restored, original.rstrip())
+        self.assertIn("FUNC TID_HOME_BUFFER识别稳定状态(): INT", generated)
 
 
 def model_compensated_fixture():

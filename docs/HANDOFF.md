@@ -2,7 +2,20 @@
 
 本文是当前火红/叶绿全自动乱数初步实现的开发快照。换设备或新建 Codex 对话时，先让新对话完整阅读本文件、根目录 `README.md` 和 `docs/INITIAL_AUTO_RNG.md`，再检查工作区实际状态。
 
-快照日期：2026-09-14。
+快照日期：2026-09-16。
+
+## 2026-09-16 原包同步与 0.9.3 本地打包（含 Gitee 分卷）
+
+- 按用户更正使用 `0.9.3 / 2026091601`，检查并重新导入 `D:\Download\NS火叶全自动一键乱数1.1.8` 的正式/时间轴入口、31个库及共享英日TID连续脚本。修改前缓存和覆盖层备份在 `.build/release-0-9-3-before-20260916`；没有编辑原包。
+- 普通 HOME_BUFFER 按当前 NS1/NS2 选择标签，保留工具8次采样、延迟画面恢复及晚到成功保护；补齐孵蛋失败标记、NS2关闭识别和正在关闭时1000ms等待。TID同步原包返回值协议、20次重试上限、50ms调整、关闭失败检查及100–3000ms边界；可选低分自适应只替换识图分类，不覆盖这些控制逻辑。
+- 同步狩猎区第0轮Teachy TV的1000ms保护和对应固定延迟扣除，后续轮次保持原等待参数；同步Seed表设置预检及方案2日志。两份Seed表的数据数组无变化，固定预校准值没有改动。只排除原包 `lib/seed_backup` 历史备份，其他未知库文件继续纳入指纹。
+- 当前原包33文件指纹 `79a7e2b9f3056057075564fbdd02aa495d87f52ee2fa9b0387fd6c2b1711153b`；工具物化指纹 `c31a0e05b72885ff03e4e98e5bdaca2ec92f7affcf26e2f0fd6e62d3efcfc1da`；TID指纹 `ca12bdc6ad08db2f2fe9473c9990bea105e523863067f0de8413ceeb0ab814b8`。1150个普通标签与328个TID标签均保持原审计摘要。
+- 本包包含此前已提交的程序更新源选择（自动/GitHub/Gitee）、GitHub优先及Gitee分卷备用更新、土龙弟弟三节形态筛选。发布说明为 `docs/releases/v0.9.3.md`；用户升级后须重新生成方案。
+- 完整回归682项：655通过、27按环境或资源条件跳过，日志 `.build/release-0-9-3-tests.log`。30份原包/缓存/生成入口加6份补充入口通过真实EasyCon `1.6.4-a+9c86137` format及绑定编译；补充覆盖英日×NS1/NS2的TID低分自适应和正式/时间轴狩猎区。证据分别在 `.build/release-0-9-3-script-verification/verification.json` 与 `.build/release-0-9-3-extra-scripts/verification.json`。
+- 原包40项检查37通过、3失败：`check_easycon_frame_fix.py` 缺本机1.70实验源码；`check_pyeasycon_safari_164a_test.py` 仍断言独立测试稿旧提交注释；`check_starter_calibration.py` 精确计数旧 `$TV等待MS` 调用，未适配原包狩猎区 `$目标获取TV等待MS`。未删除断言或修改实验稿掩盖失败；正式入口及狩猎区新生成入口的真实编译均通过。
+- 构建目录 `.build/windows-release-pyside6-0-9-3-20260916`，完整ZIP为592782196字节（565.32MiB），SHA-256 `6b7df89003480b4778436f76eb678c552071b88ed28c8a57cf8a76c8b8ad5ee7`。主程序、独立更新器、schema 1清单和SHA文件已生成；冻结后台入口、UTF-8管道/日志/退出码/停止检查、版本探针、ZIP CRC和清单一致性均通过。包内脚本、标签、TID和覆盖层与当前缓存逐项一致，只含两份正式OCR模型，无Seed历史备份及170a实验后端。
+- `gitee-release-assets` 含 `gitee-update-manifest.json` 和7个连续分卷：前6卷各94371840字节（90MiB），末卷26551156字节。已逐卷核对摘要，并用生产更新器 `download_package()` 从本地文件传输重组，确认完整ZIP大小、摘要和结构与GitHub整包完全一致；没有将本地重组冒充线上下载验收。
+- 原生Windows冻结TID/孵蛋界面截图中文正常，见构建目录 `native-tid.png`、`native-egg.png`；详细包验证见 `verification.json`。全程未连接单片机或操作游戏。本次按最新请求完成本地打包，未创建或替换GitHub/Gitee Release，已发布的0.9.2保持原样。
 
 ## 2026-09-14 野生土龙弟弟三节形态筛选
 

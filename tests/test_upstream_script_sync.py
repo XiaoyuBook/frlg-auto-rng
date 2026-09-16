@@ -1,4 +1,5 @@
 import re
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -10,6 +11,22 @@ CACHE = ROOT / "local_assets/easycon118"
 
 
 class UpstreamOverlayTests(unittest.TestCase):
+    def test_seed_backups_do_not_change_active_corpus_but_extra_library_does(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary)
+            for name in ecs.EXPECTED_TEMPLATE_NAMES:
+                (source / name).write_text("RETURN\n", encoding="utf-8")
+            library = source / "lib"
+            library.mkdir()
+            (library / "table.ecs").write_text("$seed = 1\n", encoding="utf-8")
+            expected = ecs.inspect_script_corpus(source)
+            backup = library / "seed_backup/20260912"
+            backup.mkdir(parents=True)
+            (backup / "table.ecs").write_text("$seed = 2\n", encoding="utf-8")
+            self.assertEqual(ecs.inspect_script_corpus(source), expected)
+            (library / "unexpected.ecs").write_text("RETURN\n", encoding="utf-8")
+            self.assertNotEqual(ecs.inspect_script_corpus(source)["sha256"], expected["sha256"])
+
     def test_egg_main_preserves_explicit_nx_argument(self):
         original = (
             "$孵蛋流程请求Held帧 = 0\n"
@@ -70,9 +87,14 @@ class ImportedReleaseAssetsTests(unittest.TestCase):
             self.assertIn(ecs.EGG_FORMAL_PARITY_REAL_CALL_NX_WAIT_MODE, text)
             self.assertIn("IF $Seed曾命中目标 == 0 and", text)
             self.assertIn("HOME_BUFFER_LATE_SUCCESS", text)
+            self.assertIn("$HOME_BUFFER识别状态 = HOME_BUFFER重采样状态(1)", text)
+            self.assertIn("$目标获取TV等待MS = 1000", text)
+            self.assertIn("$F2阶段脚本固定延迟 = $time_F2 - $time_F1 - $第0轮TV等待请求", text)
         egg = (CACHE / "lib/27_孵蛋测试流程.ecs").read_text(encoding="utf-8")
         self.assertIn(ecs.EGG_PICKUP_PARITY_SIGNATURE_NX_WAIT_MODE, egg)
         self.assertIn("$孵蛋库_Blackout肩键保持MS -= 750", egg)
+        self.assertIn("$孵蛋库_HOME_BUFFER正确退出NS2匹配 = @HOME_BUFFER正确退出_NS2", egg)
+        self.assertFalse((CACHE / "lib/seed_backup").exists())
         route = (CACHE / "lib/18_获取_抓捕流程.ecs").read_text(encoding="utf-8")
         self.assertIn("$三圣兽喷雾已消耗步数 = 4", route)
         self.assertIn("$三圣兽喷雾已消耗步数 = 0", route)

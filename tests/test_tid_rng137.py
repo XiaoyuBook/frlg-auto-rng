@@ -289,8 +289,10 @@ class TidRng137Tests(unittest.TestCase):
             self.assertIn("$HOME_BUFFER自适应最低阈值 = 90", enabled, language)
             self.assertIn("$NS机型 == 1", enabled, language)
             self.assertEqual(
-                len(re.findall(r"(?m)^FUNC (?:(?:EN|JP|TID)_)?HOME_BUFFER$", enabled)),
-                2 if is_starter_save_template(template) and "FUNC TID_HOME_BUFFER\n" not in template else 1,
+                len(re.findall(r"(?m)^FUNC (?:(?:EN|JP|TID)_)?HOME_BUFFER(?:\(\): INT)?$", enabled)),
+                2 if is_starter_save_template(template) and not re.search(
+                    r"(?m)^FUNC TID_HOME_BUFFER(?:\(\): INT)?$", template
+                ) else 1,
                 language,
             )
 

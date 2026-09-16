@@ -29,7 +29,7 @@ class ECSReplay:
                 HOME_BUFFER_ADAPTIVE_GLOBALS + EGG_HOME_BUFFER_GLOBALS,
             )
         }
-        self.values.update(NX机型=1, 调试日志输出=0, HOME_BUFFER延迟=1200)
+        self.values.update(NX机型=1, 调试日志输出=0, HOME_BUFFER延迟=1200, 静态或野生="野生")
         self.actions = []
         self.waits = []
         self.frames = list(frames) or [{}]
@@ -322,6 +322,19 @@ ENDFUNC
                 replay.env["HOME_BUFFER重采样状态"] = lambda nx: 1
                 replay.call("HOME_BUFFER")
                 self.assertEqual(replay.actions, ["X", "A", "A", "A", "HOME"])
+
+    def test_controllers_reject_buffer_label_from_other_console(self):
+        for controller in (EGG_HOME_BUFFER_OVERRIDE_PATH, STANDARD_HOME_BUFFER_OVERRIDE_PATH):
+            for nx in (1, 2):
+                with self.subTest(controller=controller.name, nx=nx):
+                    replay = ECSReplay(controller)
+                    replay.values.update(NX机型=nx, 静态或野生="孵蛋")
+                    suffix = "_NS2" if nx == 1 else ""
+                    replay.frames = [{"HOME_BUFFER正确退出" + suffix: 100}]
+                    replay.env["HOME_BUFFER恢复启动原点"] = lambda: 1
+                    replay.call("HOME_BUFFER")
+                    self.assertEqual(replay.values["HOME_BUFFER锁定启用"], 0)
+                    self.assertEqual(replay.values["孵蛋HOME_BUFFER失败"], 1)
 
     def test_unknown_recovery_presses_home_at_most_once_across_retries(self):
         replay = ECSReplay(frames=[{"主页": 50, "正确退出": 50, "HOME_BUFFER正确退出": 50}])

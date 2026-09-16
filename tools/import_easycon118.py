@@ -100,7 +100,14 @@ def import_package(source: Path, destination: Path) -> Path:
         target = destination / name
         if target.exists():
             shutil.rmtree(target)
-        shutil.copytree(source_path, target)
+        # The upstream Seed updater stores historical libraries here. They
+        # are not executable assets and must not alter the corpus or ship.
+        def ignore_backups(directory, names):
+            if name == "lib" and Path(directory) == source_path:
+                return [entry for entry in names if entry == "seed_backup"]
+            return []
+
+        shutil.copytree(source_path, target, ignore=ignore_backups)
         if name == "ImgLabel":
             copy_easycon118_extension_labels(target)
     for old_template in destination.glob("*.ecs"):
