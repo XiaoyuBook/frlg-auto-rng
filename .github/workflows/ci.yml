@@ -149,6 +149,7 @@ jobs:
           tests.test_sid_traversal
           tests.test_tid_starter_save
           tests.test_tid_starter_flow
+          tests.test_japanese_nx2_handoff
           tests.test_tid_starter_runner
           tests.test_app_version
           tests.test_package_entry

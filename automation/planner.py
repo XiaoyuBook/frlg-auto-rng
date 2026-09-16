@@ -70,7 +70,7 @@ class AutoSearchRequest:
     def validate(self) -> None:
         if self.game not in {
             "fr_nx", "fr_nx2", "lg_nx", "lg_nx2",
-            "fr_jpn_nx", "lg_jpn_nx",
+            "fr_jpn_nx", "fr_jpn_nx2", "lg_jpn_nx", "lg_jpn_nx2",
         }:
             raise ValueError(f"首版只支持火红/叶绿 Switch 1/2，当前游戏为 {self.game!r}")
         if not (0 <= self.tid <= 65535):

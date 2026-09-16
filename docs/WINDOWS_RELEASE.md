@@ -1,10 +1,10 @@
 # Windows 绿色版
 
-使用 `tools\build_windows_release.ps1` 生成发布包。构建机使用项目自己的 `.venv`，脚本锁定安装 PyInstaller 6.15.0、PySide6 6.11.2 与 truststore 0.10.4；使用发布包的用户不需要安装 Python 或任何 Python 依赖。当前发布合同为 `0.9.3 / 2026091601`，正式界面仅为 PySide6，发行目录不包含旧 Tk、Tcl/Tk 或 tkinterdnd2 运行时。
+使用 `tools\build_windows_release.ps1` 生成发布包。构建机使用项目自己的 `.venv`，脚本锁定安装 PyInstaller 6.15.0、PySide6 6.11.2 与 truststore 0.10.4；使用发布包的用户不需要安装 Python 或任何 Python 依赖。当前发布合同为 `0.9.3 / 2026091602`，正式界面仅为 PySide6，发行目录不包含旧 Tk、Tcl/Tk 或 tkinterdnd2 运行时。
 
 ```powershell
 .\tools\build_windows_release.ps1 `
-  -BuildTag pyside6-0-9-3-20260916 `
+  -BuildTag pyside6-0-9-3-20260916-r2 `
   -EasyConPublish 'C:\Users\axenx\Downloads\伊机控-EasyCon-v1.6.4alpha测试版-260518\publish' `
   -LocalAssets .\local_assets `
   -NotesFile .\docs\releases\v0.9.3.md
@@ -16,7 +16,7 @@
 .\tools\build_windows_release.ps1 -EasyConPublish 'D:\EasyCon\publish'
 ```
 
-输出位于 `.build\windows-release-pyside6-0-9-3-20260916\FRLG-Auto-RNG-0.9.3-windows-x64`，同时生成同名 ZIP、`update-manifest.json`、`.sha256` 文件和 `gitee-release-assets` 目录。构建末尾会执行冻结版本探针和隔离数据目录下的 PySide6 截图冒烟。发布包是绿色文件夹，不应把 `.venv`、源码或 Python 安装包一起复制给用户。配置、日志和运行时生成的 ECS 工程会写入 `%LOCALAPPDATA%\FRLG-Auto-RNG`。
+输出位于 `.build\windows-release-pyside6-0-9-3-20260916-r2\FRLG-Auto-RNG-0.9.3-windows-x64`，同时生成同名 ZIP、`update-manifest.json`、`.sha256` 文件和 `gitee-release-assets` 目录。构建末尾会执行冻结版本探针和隔离数据目录下的 PySide6 截图冒烟。发布包是绿色文件夹，不应把 `.venv`、源码或 Python 安装包一起复制给用户。配置、日志和运行时生成的 ECS 工程会写入 `%LOCALAPPDATA%\FRLG-Auto-RNG`。
 
 按当前源码构建的绿色版会内置 Seed 表更新器。用户在 GUI 点击“检查/更新 Seed 表”即可下载 Ten Lines 官方火红/叶绿 NX 二进制表、生成对应 EasyCon ECS 表并执行真实 1.6.4-a `format` 校验，不需要系统 Python，也不依赖外部 `Tools\update_*.py`。验证后的四个文件写入 `%LOCALAPPDATA%\FRLG-Auto-RNG\seed_tables\current`，上一版保留为 `previous`；生成运行工程时会自动覆盖两份 `lib` Seed 表。
 
@@ -40,7 +40,7 @@ GitHub 仍发布完整 ZIP、`update-manifest.json` 和 SHA 文件。在自动�
 
 ```powershell
 .\tools\publish_windows_release.ps1 `
-  -BuildRoot .build\windows-release-pyside6-0-9-3-20260916 `
+  -BuildRoot .build\windows-release-pyside6-0-9-3-20260916-r2 `
   -Tag v0.9.3 `
   -Title "FRLG Auto RNG 0.9.3 PySide6版" `
   -NotesFile .\docs\releases\v0.9.3.md
