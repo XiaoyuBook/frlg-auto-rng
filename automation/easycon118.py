@@ -197,12 +197,15 @@ PREVIOUS_SCRIPT_SHA256S += (
     # Version 2.0 package before both egg parents exposed the Ten Lines Ditto
     # type and validated the complete four-type parent pairing rules.
     "208cbab1b9635c21873350a4891e90cc982fb59b26631f664eec6a8eed422b2f",
+    # September 16 source package before egg Held candidates were normalized
+    # and intersected across reverse-lookup rounds.
+    "79a7e2b9f3056057075564fbdd02aa495d87f52ee2fa9b0387fd6c2b1711153b",
 )
 PREVIOUS_SCRIPT_SHA256S += (
     "d607e8a2702be9a7cacecb24cb0bdf59083188954c76b5196e2b7e23b62647db",
     "1e0da82c8c4d9b64e9b8768079ac14ff98c84c0ead1b3d87486912940175a129",
 )
-EXPECTED_SCRIPT_SHA256 = "79a7e2b9f3056057075564fbdd02aa495d87f52ee2fa9b0387fd6c2b1711153b"
+EXPECTED_SCRIPT_SHA256 = "a7789ecb4a89d57234ae69bd9dd877fad847861153a40d5b3a23a1a3439e56df"
 # Previously materialized 1.6.4-a corpora remain accepted as audited
 # compatibility inputs. This is not a general bypass for modified ECS files.
 SUPPORTED_RUNTIME_SCRIPT_SHA256S = (
@@ -313,6 +316,9 @@ SUPPORTED_RUNTIME_SCRIPT_SHA256S = (
     # September 16 source sync: NX-specific HOME_BUFFER, Safari first-round
     # TV startup guard, and current Seed table metadata without backups.
     "c31a0e05b72885ff03e4e98e5bdaca2ec92f7affcf26e2f0fd6e62d3efcfc1da",
+    # Egg Held candidates from all four methods are normalized by the actual
+    # per-round correction and intersected before consuming another anchor.
+    "1fb41159f4b585c1a3e6a355a867f0b62c8660d5ce06b23c6a987c7098525209",
 )
 
 

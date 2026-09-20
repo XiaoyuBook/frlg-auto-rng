@@ -253,6 +253,28 @@ FUNC 孵蛋流程_执行蛋个体反查(): INT
             "向右修正时应优先选择右侧同奇偶出蛋帧",
         )
 
+    def test_held_candidates_intersect_in_normalized_cross_round_coordinates(self):
+        def update(history, raw_candidates, executed_correction):
+            current = [value - executed_correction for value in raw_candidates]
+            if history is None:
+                return current
+            exact = [value for value in current if value in history]
+            if exact:
+                return exact
+            if len(history) == 1:
+                nearby = [value for value in current if abs(value - history[0]) <= 1]
+                if nearby:
+                    return nearby
+            return current
+
+        history = update(None, [1044, 1064], 0)
+        self.assertEqual(history, [1044, 1064])
+        history = update(history, [970, 1110, 1145], 46)
+        self.assertEqual(history, [1064])
+        self.assertEqual(update(history, [1044, 1064], 0), [1064])
+        self.assertEqual(update([1064], [1063], 0), [1063])
+        self.assertEqual(update([1044, 1064], [1200], 0), [1200])
+
     def test_egg_reverse_lookup_does_not_expand_frame_window(self):
         original = """\
 FUNC 孵蛋流程_执行蛋个体反查(): INT
@@ -1617,6 +1639,29 @@ ENDFUNC
         self.assertIn("FUNC 孵蛋流程_合并当前方法候选($方法: INT): INT", template)
         self.assertIn("FUNC 孵蛋流程_选择校准候选(): INT", template)
         self.assertIn("FUNC 孵蛋流程_应用多候选锚点跳出(): INT", template)
+        self.assertIn("FUNC 孵蛋流程_更新Held归一候选交集(): INT", template)
+        held_intersection = template.split(
+            "FUNC 孵蛋流程_更新Held归一候选交集(): INT", 1
+        )[1].split("ENDFUNC", 1)[0]
+        self.assertIn(
+            "$孵蛋流程Held交集当前值 = $孵蛋流程不同Held候选表[$孵蛋流程Held交集当前索引] - $孵蛋流程本轮Held总执行修正帧",
+            held_intersection,
+        )
+        self.assertIn("$孵蛋流程Held交集精确数量 > 0", held_intersection)
+        self.assertIn("$孵蛋流程Held交集历史数量 == 1", held_intersection)
+        self.assertIn("$孵蛋流程Held交集临近差 <= 1", held_intersection)
+        self.assertIn(
+            "$孵蛋流程Held归一交集表 = $孵蛋流程Held交集当前表",
+            held_intersection,
+        )
+        self.assertIn(
+            "$孵蛋流程Held归一交集结果 = 孵蛋流程_更新Held归一候选交集()",
+            template,
+        )
+        self.assertIn(
+            "$孵蛋流程唯一Held帧 = $孵蛋流程Held归一交集落点 + $孵蛋流程本轮Held总执行修正帧",
+            template,
+        )
         self.assertIn(EGG_REVERSE_LOOKUP_POLICY_MARKER, template)
         self.assertIn(
             "$孵蛋流程跨方法候选总数 += $孵蛋流程合并方法总数",
