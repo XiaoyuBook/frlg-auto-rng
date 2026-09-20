@@ -6,8 +6,9 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, Qt, Signal
 from PySide6.QtGui import QImage
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from notifications.qq_client import QQError
@@ -132,6 +133,38 @@ class QQServiceTests(unittest.TestCase):
 
         self.assertEqual(service.setup.cancel_calls, 1)
         self.assertFalse(service.setup.busy)
+
+    def test_all_dialog_exit_paths_cancel_once_and_allow_reopening(self):
+        exits = {
+            "escape": lambda dialog: QTest.keyClick(dialog, Qt.Key.Key_Escape),
+            "close": lambda dialog: dialog.close(),
+            "finish_button": lambda dialog: dialog.close_button.click(),
+            "reject": lambda dialog: dialog.reject(),
+            "accept": lambda dialog: dialog.accept(),
+            "done": lambda dialog: dialog.done(0),
+        }
+        for name, dismiss in exits.items():
+            with self.subTest(exit=name):
+                service, store = self.make_service()
+                service.update(app_id="app", secret="secret")
+                sender_cancels = service.sender.cancel_calls
+                dialog = QQNotificationDialog(service)
+                self.addCleanup(dialog.deleteLater)
+                self.addCleanup(service.shutdown)
+                closed = []
+                dialog.closed.connect(lambda: closed.append(True))
+                for attempt in (1, 2):
+                    dialog.show()
+                    APP.processEvents()
+                    service.setup.bind("user")
+                    dismiss(dialog)
+                    APP.processEvents()
+                    self.assertFalse(dialog.isVisible())
+                    self.assertFalse(service.setup.busy)
+                    self.assertEqual(service.setup.cancel_calls, attempt)
+                    self.assertEqual(len(closed), attempt)
+                    self.assertEqual(service.sender.cancel_calls, sender_cancels)
+                    self.assertTrue(store.path.is_file())
 
 
 if __name__ == "__main__":
