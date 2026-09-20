@@ -297,7 +297,12 @@ class QQNotificationService(QObject):
             if detail:
                 text += f"详情：{str(detail)[:800]}\n"
             text += "结束时间：" + datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            image = notification_image(frame) if setting.attach_image else b""
+            image = b""
+            if setting.attach_image and frame is not None:
+                try:
+                    image = notification_image(frame)
+                except QQError as exc:
+                    self.log.emit(f"通知截图不可用，将只发送文字：{exc}")
             self._queue.append(PendingNotification(event, text, image, targets, setting.app_id, setting.secret))
             self._drain()
             return True

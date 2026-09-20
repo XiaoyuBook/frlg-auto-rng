@@ -7,10 +7,12 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QObject, Signal
+from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QApplication
 
 from notifications.qq_client import QQError
 from notifications.qq_service import QQNotificationService, QQSettingsStore
+from pyside_app.qq_notifications import QQNotificationDialog
 
 
 APP = QApplication.instance() or QApplication([])
@@ -30,6 +32,8 @@ class FakeClient(QObject):
         self.busy = False
         self.fail = fail
         self.configured = None
+        self.sent = []
+        self.cancel_calls = 0
 
     def configure(self, app_id, secret):
         self.configured = (app_id, secret)
@@ -43,6 +47,7 @@ class FakeClient(QObject):
 
     def send(self, targets, text, image):
         self.busy = True
+        self.sent.append((targets, text, image))
         if self.fail:
             self.finished.emit(False, "发送失败")
             self.busy = False
@@ -53,6 +58,7 @@ class FakeClient(QObject):
         self.busy = False
 
     def cancel(self):
+        self.cancel_calls += 1
         self.busy = False
 
 
@@ -96,6 +102,36 @@ class QQServiceTests(unittest.TestCase):
         self.assertTrue(service.notify_task("run-2", "测试任务", "失败"))
         self.assertEqual(len(service.records), 1)
         self.assertFalse(service.records[0].success)
+
+    def test_task_without_cached_frame_sends_text_only(self):
+        service, _ = self.make_service()
+        service.update(app_id="app", secret="secret")
+        service.update(user_openid="openid", enabled=True)
+
+        self.assertTrue(service.notify_task("run-no-frame", "测试任务", "已完成"))
+        self.assertEqual(service.sender.sent[-1][2], b"")
+
+    def test_task_with_cached_frame_sends_jpeg(self):
+        service, _ = self.make_service()
+        service.update(app_id="app", secret="secret")
+        service.update(user_openid="openid", enabled=True)
+        frame = QImage(12, 8, QImage.Format.Format_RGB32)
+        frame.fill(0x3366CC)
+
+        self.assertTrue(service.notify_task("run-frame", "测试任务", "已完成", frame=frame))
+        self.assertTrue(service.sender.sent[-1][2].startswith(b"\xff\xd8"))
+
+    def test_closing_dialog_cancels_active_binding(self):
+        service, _ = self.make_service()
+        dialog = QQNotificationDialog(service)
+        self.addCleanup(dialog.deleteLater)
+        service.setup.bind("user")
+        self.assertTrue(service.setup.busy)
+
+        dialog.close()
+
+        self.assertEqual(service.setup.cancel_calls, 1)
+        self.assertFalse(service.setup.busy)
 
 
 if __name__ == "__main__":

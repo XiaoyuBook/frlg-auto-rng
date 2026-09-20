@@ -52,8 +52,8 @@ if (-not $EasyConPublish -or -not (Test-Path -LiteralPath (Join-Path $EasyConPub
     throw "找不到 EasyCon publish 目录。请用 -EasyConPublish 指定包含 ezcon.exe 的目录。"
 }
 
-& $Python -m pip install --disable-pip-version-check "pyinstaller==6.15.0" "PySide6==6.11.2" "truststore==0.10.4" "certifi==2026.7.22"
-if ($LASTEXITCODE -ne 0) { throw "PyInstaller / PySide6 / truststore / certifi 安装失败" }
+& $Python -m pip install --disable-pip-version-check "pyinstaller==6.15.0" "PySide6==6.11.2" "pywin32>=306" "truststore==0.10.4" "certifi==2026.7.22"
+if ($LASTEXITCODE -ne 0) { throw "PyInstaller / PySide6 / pywin32 / truststore / certifi 安装失败" }
 
 $PyInstallerWork = Join-Path $BuildRoot "pyinstaller"
 $PyInstallerDist = Join-Path $BuildRoot "dist"
@@ -93,6 +93,7 @@ $args = @(
     "--exclude-module", "tkinterdnd2",
     "--add-data", "$(Join-Path $Root 'assets');assets",
     "--add-data", "$(Join-Path $Root 'rng\resources');rng\resources",
+    "--add-data", "$(Join-Path $Root 'docs\assets');docs/assets",
     "--add-data", "$LocalAssets;local_assets",
     "--add-data", "$(Join-Path $Root 'runtime_backend');runtime_backend",
     "--add-data", "$(Join-Path $Root 'default.yaml');.",

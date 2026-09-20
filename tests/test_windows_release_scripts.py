@@ -49,6 +49,7 @@ class WindowsReleaseScriptTests(unittest.TestCase):
     def test_formal_requirements_pin_pyside6(self):
         requirements = (ROOT / "requirements-auto.txt").read_text(encoding="utf-8")
         self.assertIn("PySide6==6.11.2", requirements)
+        self.assertIn('pywin32>=306; sys_platform == "win32"', requirements)
 
     def test_publisher_requires_preflight_and_draft_verification(self):
         source = (ROOT / "tools" / "publish_windows_release.ps1").read_text(encoding="utf-8")

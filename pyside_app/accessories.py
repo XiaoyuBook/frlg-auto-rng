@@ -164,6 +164,15 @@ class Accessories(QObject):
             self.monitor.restart()
         self.diagnose()
 
+    def latest_frame(self):
+        """Return a detached copy of the most recent cached game frame."""
+        if not self.monitor or not self.monitor.reader:
+            return None
+        frame = self.monitor.reader.frame
+        if frame is None or frame.isNull():
+            return None
+        return frame.copy()
+
     def update_seeds(self):
         if self.w.job or self.w.running:
             return

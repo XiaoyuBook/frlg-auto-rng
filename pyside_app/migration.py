@@ -343,6 +343,7 @@ class CompleteWindow(FrlgWindow):
             self.running_workflow = prepared
             self.running_prepared = None
             self.run_command = command
+            self._begin_run_notification()
             self.decoder.reset()
             self.pending_output = ""
             self.pending_visible = False

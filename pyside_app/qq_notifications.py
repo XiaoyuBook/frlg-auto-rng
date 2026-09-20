@@ -617,6 +617,8 @@ class QQNotificationDialog(ThemedDialog):
         if self.service.last_error and not self.service.operation: self._feedback_message(self.service.last_error, error=True)
 
     def closeEvent(self, event):
+        if self.service.setup.busy:
+            self.service.setup.cancel()
         try:
             self._save_credentials()
         except Exception:

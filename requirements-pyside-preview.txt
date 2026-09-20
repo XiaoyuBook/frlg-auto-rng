@@ -1,2 +1,3 @@
 # Shared by the standalone preview, formal source entry, and Windows release.
+pywin32>=306; sys_platform == "win32"
 PySide6==6.11.2

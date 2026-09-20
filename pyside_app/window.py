@@ -597,9 +597,7 @@ class FrlgWindow(FrlgPreviewWindow):
                 return
             self.run_command = command
             self.running_prepared = prepared
-            self._run_id = uuid.uuid4().hex
-            self._manual_stop_requested = False
-            self._run_notification_sent = False
+            self._begin_run_notification()
             self.decoder.reset()
             self.pending_output = ""
             self.pending_visible = False
@@ -609,6 +607,12 @@ class FrlgWindow(FrlgPreviewWindow):
             self.refresh_state()
             self.process.start(command.program, list(command.arguments))
         self.launch_job(lambda _cancel, _status: prepare_run(prepared, port, video, self.devices[1][video]), ready, "正在重新核对设备、脚本与正式运行器……")
+
+    def _begin_run_notification(self):
+        """Start a new notification event for each accepted run."""
+        self._run_id = uuid.uuid4().hex
+        self._manual_stop_requested = False
+        self._run_notification_sent = False
 
     def _process_started(self):
         self.runtime_issues.clear()
@@ -716,12 +720,14 @@ class FrlgWindow(FrlgPreviewWindow):
         detail = self.log_view.toPlainText().strip()
         if len(detail) > 800:
             detail = detail[-800:]
+        frame = self.accessories.latest_frame() if hasattr(self, "accessories") else None
         self.qq_service.notify_task(
             self._run_id or uuid.uuid4().hex,
             "FRLG 乱数任务",
             outcome,
             target=self.summary_name.text() if self.summary_name.text() != "暂无方案" else "当前方案",
             detail=detail,
+            frame=frame,
         )
 
     def _load_settings(self):
