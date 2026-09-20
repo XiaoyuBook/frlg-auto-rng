@@ -765,6 +765,11 @@ class FrlgPreviewWindow(QMainWindow):
         self.device_chip = self._chip("当前设备", "尚未检测", "deviceChip")
         self.device_chip.clicked.connect(lambda: self.settings_dialog.show())
         top.addWidget(self.device_chip)
+        self.qq_notification_button = _button("🔔  QQ 通知", enabled=True)
+        self.qq_notification_button.setObjectName("qqNotificationButton")
+        self.qq_notification_button.setFixedSize(118, 50)
+        self.qq_notification_button.setToolTip("配置 QQ 机器人、绑定接收方并查看通知规则")
+        top.addWidget(self.qq_notification_button)
         header_layout.addLayout(top)
 
         banner = QFrame()
@@ -1002,6 +1007,10 @@ class FrlgPreviewWindow(QMainWindow):
     def _adapt_workspace(self) -> None:
         if hasattr(self, "quick_layout"):
             self._layout_quick_settings()
+        if hasattr(self, "qq_notification_button"):
+            # Keep the compact 900px layout usable; the entry remains visible
+            # at the 1028px compact size used by the approved preview.
+            self.qq_notification_button.setVisible(self.width() >= 980)
         if not hasattr(self, "overview_scroll") or not hasattr(self, "overview_button"):
             return
         wide = self.width() >= 1180 and getattr(self, "current_page", "sid") != "tid_records"

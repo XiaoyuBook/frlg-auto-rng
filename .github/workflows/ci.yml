@@ -65,6 +65,10 @@ jobs:
           pyside_app/controller_layout.py
           pyside_app/controller_keyboard.py
           pyside_app/startup_notice.py
+          notifications/qq_client.py
+          notifications/qq_service.py
+          pyside_app/qq_guide_source.py
+          pyside_app/qq_notifications.py
           run_auto_rng_gui.py
           run_auto_planner.py
           run_easycon_logged.py
@@ -102,6 +106,14 @@ jobs:
           rng/sid_reverse_workflow.py
           rng/starter_sid_verification.py
           rng/tenlines_utils.py
+          tools/qq_notify_test/app.py
+          tools/qq_notify_test/client.py
+
+      - name: Run offline QQ notification integration tests
+        run: >-
+          python -m unittest -v
+          tools.qq_notify_test.test_client
+          tests.test_qq_notification_service
 
       - name: Run repository-independent unit tests
         run: >-

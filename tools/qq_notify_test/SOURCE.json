@@ -1,0 +1,25 @@
+{
+  "source_thread_id": "01a0bc69-34ef-7701-b2c2-e8ec45831ce0",
+  "source_host": "local",
+  "source_directory": "D:\\project\\auto-bdsp-rng\\tools\\qq_notify_test",
+  "source_repository_head": "640e5aca5ecd21d1ceaff6f60011db567fc4be96",
+  "source_state": "untracked working-tree files; not included in source_repository_head",
+  "imported_at_utc": "2026-09-20T03:16:00.763701+00:00",
+  "protocol_reference_commit": "f29966868c6e2d5b8798bb6a4f3df201ec4a5f95",
+  "source_sha256": {
+    "app.py": "9a56e5a98809fccc4a1bdcc1565966ab21ca031b4b00158276a28f35aecf3b28",
+    "client.py": "c781c65814d39992857703117d1c9813f1717d75fb79b2c1c283a7af98ea873a",
+    "test_client.py": "42288ade05ad1e2cdc9c5b3cf843d6e05fe8159a44ba50dfa46f2a7a7f0c9429",
+    "README.md": "6e84ba2a4b7dc62dd6987af321fad8c0a2fffab9e9629cdefd6b3821a978f898",
+    "requirements.txt": "76dcbcece773bdd5b82ca6273df707c2f38b3801718792693a399624c686eb36",
+    "run.bat": "a1f32ac2c6793a7a35172300cea4241f893ddd07556887c7bed5c9109f57d4c3"
+  },
+  "license_source": "D:\\project\\auto-bdsp-rng\\LICENSE.txt",
+  "license_sha256": "45669c033b08b03fe29c74ea2376cd4bab100d7f4d24f86e8edfa1c7f2a373f2",
+  "local_adaptations": [
+    "FRLG configuration directory and window title",
+    "Package imports alongside direct script launch",
+    "PySide6 pinned to host version 6.11.2",
+    "FRLG documentation and CI registration"
+  ]
+}

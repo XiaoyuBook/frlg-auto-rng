@@ -4,6 +4,7 @@ from __future__ import annotations
 import codecs
 import json
 import re
+import uuid
 from pathlib import Path
 
 from PySide6.QtCore import QProcess, QProcessEnvironment, QSignalBlocker, QTimer, Qt
@@ -38,6 +39,8 @@ from .path_settings import restore_resource_path
 from .diagnostics import explain_error, parse_integer
 from .profiles import ProfileManager
 from .services import AppPaths, WildInputs, prepare_wild, prepare_run, display_log_line
+from notifications.qq_service import QQNotificationService, QQSettingsStore
+from .qq_notifications import QQNotificationDialog
 
 
 class FrlgWindow(FrlgPreviewWindow):
@@ -45,6 +48,8 @@ class FrlgWindow(FrlgPreviewWindow):
         self.live_ready = False
         super().__init__()
         self.paths = paths or AppPaths()
+        self.qq_service = QQNotificationService(self, store=QQSettingsStore(self.paths.user / "qq-notifications.json"))
+        self.qq_dialog = None
         self.setWindowTitle("火红 / 叶绿全自动乱数 · PySide6")
         self.settings_dialog.setWindowTitle("共通设置")
         self.job = None
@@ -88,6 +93,7 @@ class FrlgWindow(FrlgPreviewWindow):
         self._bind_button(self.cancel_button, self.cancel)
         self._bind_button(self.start_button, self.request_start)
         self._bind_button(self.stop_button, self.stop_run)
+        self.qq_notification_button.clicked.connect(self.show_qq_notifications)
         self.profile_selector.currentIndexChanged.connect(self.select_profile)
         self.records_table.itemSelectionChanged.connect(self.record_details)
         self.fields["source"].setText(str(self.paths.source))
@@ -136,6 +142,9 @@ class FrlgWindow(FrlgPreviewWindow):
         self.decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
         self.pending_output = ""
         self.pending_visible = False
+        self._run_id = ""
+        self._manual_stop_requested = False
+        self._run_notification_sent = False
         self.runtime_issues = {}
         self.log_view.document().setMaximumBlockCount(4000)
         self.record_poll_timer = QTimer(self)
@@ -588,6 +597,9 @@ class FrlgWindow(FrlgPreviewWindow):
                 return
             self.run_command = command
             self.running_prepared = prepared
+            self._run_id = uuid.uuid4().hex
+            self._manual_stop_requested = False
+            self._run_notification_sent = False
             self.decoder.reset()
             self.pending_output = ""
             self.pending_visible = False
@@ -600,6 +612,10 @@ class FrlgWindow(FrlgPreviewWindow):
 
     def _process_started(self):
         self.runtime_issues.clear()
+        if not self._run_id:
+            self._run_id = uuid.uuid4().hex
+        self._manual_stop_requested = False
+        self._run_notification_sent = False
         self.running = True
         self.select_page("logs")
         self.set_status("正在运行；完整日志持续写入工程目录。")
@@ -660,6 +676,7 @@ class FrlgWindow(FrlgPreviewWindow):
             self.set_status(f"运行已结束（退出码 {code}）：{issue.summary}")
         else:
             self.set_status(f"运行进程已结束（退出码 {code}）；请查看日志中的实际结果。")
+        self._notify_run_finished(code)
         if self.current_page == "tid_records" and not self.closing:
             QTimer.singleShot(0, self.refresh_records)
         if self.closing:
@@ -669,11 +686,43 @@ class FrlgWindow(FrlgPreviewWindow):
         if error == QProcess.ProcessError.FailedToStart:
             self.running = False
             self.show_error(f"运行进程无法启动：{self.process.errorString()}")
+            if not self._run_notification_sent:
+                self._run_notification_sent = True
+                self.qq_service.notify_task(self._run_id or uuid.uuid4().hex, "FRLG 乱数任务", "失败",
+                                            target=self.summary_name.text(), detail=self.process.errorString())
 
     def stop_run(self):
         if self.running and self.run_command:
+            self._manual_stop_requested = True
             self.run_command.stop_path.write_text("stop\n", encoding="utf-8")
             self.set_status("已请求停止，正在等待运行器结束……")
+
+    def show_qq_notifications(self):
+        if self.qq_dialog is None:
+            self.qq_dialog = QQNotificationDialog(self.qq_service, self)
+            self.qq_dialog.closed.connect(lambda: None)
+        self.qq_dialog.show()
+        self.qq_dialog.raise_()
+        self.qq_dialog.activateWindow()
+
+    def _notify_run_finished(self, code):
+        if self._run_notification_sent:
+            return
+        self._run_notification_sent = True
+        if self._manual_stop_requested:
+            outcome = "已停止"
+        else:
+            outcome = "已完成" if code == 0 else "失败"
+        detail = self.log_view.toPlainText().strip()
+        if len(detail) > 800:
+            detail = detail[-800:]
+        self.qq_service.notify_task(
+            self._run_id or uuid.uuid4().hex,
+            "FRLG 乱数任务",
+            outcome,
+            target=self.summary_name.text() if self.summary_name.text() != "暂无方案" else "当前方案",
+            detail=detail,
+        )
 
     def _load_settings(self):
         try:
@@ -702,6 +751,7 @@ class FrlgWindow(FrlgPreviewWindow):
             self.stop_run()
             event.ignore()
             return
+        self.qq_service.shutdown()
         try:
             write_json_atomic(self.paths.user / "pyside6_settings.json", {
                 **{key: self.fields[key].text() for key in ("source", "ezcon")},

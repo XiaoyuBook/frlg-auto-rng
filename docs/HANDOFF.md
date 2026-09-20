@@ -4,6 +4,14 @@
 
 快照日期：2026-09-20。
 
+## 2026-09-20 QQ 通知接入 PySide6 正式界面
+
+- 从本机线程 `01a0bc69-34ef-7701-b2c2-e8ec45831ce0` 引入 `tools/qq_notify_test`；来源是 BDSP 项目的未提交源码快照，原文件摘要和许可来源记录在 `SOURCE.json`，协议客户端保持原样。
+- 工具配置使用 `%LOCALAPPDATA%\FRLG-Auto-RNG\QQNotifyTest`，仅保存 AppID、OpenID 和目标；AppSecret/Token 保留在内存。支持双击 `run.bat`、直接脚本及包入口；PySide6 固定为主项目的 `6.11.2`。
+- 新增 `notifications/qq_client.py`、`notifications/qq_service.py` 和 `pyside_app/qq_notifications.py`；顶部“QQ 通知”入口提供原生设置、规则、发送记录和 12 步图文教学。配置写入 `%LOCALAPPDATA%\FRLG-Auto-RNG\qq-notifications.json`，AppSecret 默认不落盘。
+- 主程序在运行结束、失败、手动停止和启动失败路径统一生成一次通知事件；服务提供队列、逐目标投递记录、关闭取消和运行 ID 去重。退出码 0 不直接解释为目标命中，通知失败不影响运行器结果。
+- 13 项客户端 HTTP/WebSocket 离线测试与 4 项服务层测试通过，主窗口和设置/教学窗口在 offscreen 环境创建并截图；真实 QQ 收发仍需用户填写自己的凭据后人工验证。
+
 ## 2026-09-20 孵蛋 Held 跨轮归一候选消歧
 
 - 原包四份 2.0 入口已同步 Held 跨轮候选交集。每轮先合并 Normal、Split、Alternate、Mixed 四种方法的不同 Held 值，再按“原始 Held - 本轮 Held 总执行修正帧”还原到同一坐标后跨轮求交；不再因为请求位置变化而把同一候选误当成不同轨迹。

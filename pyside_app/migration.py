@@ -365,6 +365,19 @@ class CompleteWindow(FrlgWindow):
 
     def _process_finished(self, code, status):
         prepared = self.running_workflow
+        # Make the final workflow report available before the base handler
+        # creates the single QQ notification event.  The report is evidence of
+        # the outcome; reading it here keeps the notification and result panel
+        # in sync without sending a second event.
+        report_text = None
+        report = None
+        if prepared and self.run_command:
+            suffix = ".report.txt" if prepared.inputs.mode == "sid" else ".report.json"
+            report = self.run_command.log_path.with_suffix(suffix)
+            if report.is_file():
+                report_text = report.read_text(encoding="utf-8", errors="replace")
+                self.result_panel.setPlainText(report_text)
+                self._append_log(f"\n报告：{report}\n{report_text}\n")
         super()._process_finished(code, status)
         if prepared and self.run_command:
             if prepared.inputs.mode == "egg" and code == 0 and prepared.inputs.request.update_precalibration:
@@ -373,12 +386,7 @@ class CompleteWindow(FrlgWindow):
                                          self.run_command.log_path.read_text(encoding="utf-8", errors="replace"))
                 except (OSError, ValueError) as exc:
                     self._append_log(f"\n预校准未更新：{exc}\n")
-            suffix = ".report.txt" if prepared.inputs.mode == "sid" else ".report.json"
-            report = self.run_command.log_path.with_suffix(suffix)
-            if report.is_file():
-                report_text = report.read_text(encoding="utf-8", errors="replace")
-                self.result_panel.setPlainText(report_text)
-                self._append_log(f"\n报告：{report}\n")
+            if report_text is not None:
                 if code == 0 and prepared.inputs.mode == "sid":
                     from .results import sid_report_summary
                     self.workflow_summary = sid_report_summary(report_text)
