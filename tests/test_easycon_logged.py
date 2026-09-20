@@ -1,4 +1,5 @@
 import json
+import errno
 import sys
 import tempfile
 import threading
@@ -11,6 +12,26 @@ from run_easycon_logged import run_logged
 
 
 class EasyConLoggedTests(unittest.TestCase):
+    def test_invalid_console_preserves_real_child_output_marker_and_exit_code(self):
+        for operation in ("write", "flush"):
+            for child_exit in (0, 7):
+                with self.subTest(operation=operation, child_exit=child_exit), tempfile.TemporaryDirectory() as temp:
+                    root = Path(temp)
+                    log = root / "runner.log"
+                    stream = mock.Mock(encoding="utf-8")
+                    getattr(stream, operation).side_effect = OSError(errno.EINVAL, "Invalid argument")
+                    recorder = mock.Mock()
+                    with mock.patch("run_easycon_logged.sys.stdout", stream), \
+                         mock.patch("run_easycon_logged.recording_session") as session:
+                        session.return_value.__enter__.return_value = recorder
+                        result = run_logged(
+                            [sys.executable, "-c", f"print('TID_FLOW_DONE'); raise SystemExit({child_exit})"],
+                            root, log, ("TID_FLOW_DONE",),
+                        )
+                    self.assertEqual(result, child_exit)
+                    self.assertEqual(log.read_text(encoding="utf-8"), "TID_FLOW_DONE\n")
+                    self.assertIn("TID_FLOW_DONE", "".join(call.args[0] for call in recorder.feed.call_args_list))
+
     def test_partial_last_line_is_written_before_the_child_prints_a_newline(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

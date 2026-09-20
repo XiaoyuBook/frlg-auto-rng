@@ -4,7 +4,7 @@ from __future__ import annotations
 
 
 APP_VERSION = "0.9.3"
-APP_VERSION_CODE = 2026091602
+APP_VERSION_CODE = 2026092001
 UPDATE_SCHEMA = 1
 GITHUB_REPOSITORY = "axechaso/frlg-auto-rng"
 GITEE_REPOSITORY = "dazzling-night-scales/frlg-auto-rng"

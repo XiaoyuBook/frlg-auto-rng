@@ -6,21 +6,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+from console_output import write_console as _write_console
 from tid_records import recording_session
 from process_control import StopFileWatcher, terminate_process_tree
-
-
-def _write_console(text: str) -> None:
-    stream = sys.stdout
-    if stream is None:
-        return
-    try:
-        stream.write(text)
-    except UnicodeEncodeError:
-        encoding = getattr(stream, "encoding", None) or "ascii"
-        safe_text = text.encode(encoding, errors="replace").decode(encoding)
-        stream.write(safe_text)
-    stream.flush()
 
 
 def run_logged(
@@ -62,9 +50,9 @@ def run_logged(
             if not marker_seen and any(marker in combined for marker in expected_markers):
                 marker_seen = True
             marker_window = combined[-marker_window_size:]
-            _write_console(text)
             log_file.write(text)
             log_file.flush()
+            _write_console(text)
             if recording is not None:
                 recording.feed(text)
 

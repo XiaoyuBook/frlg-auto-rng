@@ -1,9 +1,10 @@
 import io
+import errno
 import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from automation.easycon118 import EasyConRuntimeCheck
 import automation.tid_starter_flow as starter_flow
@@ -33,6 +34,62 @@ class _FakeProcess:
 
 
 class TidStarterRunnerTests(unittest.TestCase):
+    def test_invalid_stdout_does_not_break_stage_logs_markers_or_progress(self):
+        for operation in ("write", "flush"):
+            with self.subTest(operation=operation), tempfile.TemporaryDirectory() as directory:
+                main = Path(directory) / "main.ecs"
+                main.write_text("RETURN 0\n", encoding="utf-8")
+                console = Mock(encoding="utf-8")
+                getattr(console, operation).side_effect = OSError(errno.EINVAL, "Invalid argument")
+                recording, progress = Mock(), Mock()
+                log = io.StringIO()
+                runner = FlowRunner(Path("runner.exe"), port="COM4", video_device=0,
+                                    log=log, recording=recording)
+                runner.progress = progress
+                lines = [ID_MARKER, "TIDFLOW|ID|TID=39792", "TIDFLOW|ID|SID_ADV=2295"]
+                process = _FakeProcess([line + "\n" for line in lines])
+                with patch("run_tid_starter_flow.sys.stdout", console), \
+                     patch("run_tid_starter_flow.subprocess.Popen", return_value=process):
+                    code = runner.run_stage(1, "TID/SID", main, required_marker=ID_MARKER)
+                self.assertEqual(code, 0)
+                self.assertEqual(parse_id_identity(runner.stage_lines), (39792, 2295))
+                self.assertIn("[流程完成] 第1阶段已完成。", log.getvalue())
+                for line in lines:
+                    self.assertIn(line, log.getvalue())
+                    recording.feed.assert_any_call(line + "\n")
+                    progress.feed.assert_any_call(line)
+                self.assertIsNone(runner.current_process)
+                self.assertTrue(process.stdout.closed)
+
+    def test_invalid_stdout_does_not_mask_child_failure_or_missing_marker(self):
+        for lines, exit_code, expected in ((["failed\n"], 7, 7), (["done\n"], 0, 3)):
+            with self.subTest(exit_code=exit_code), tempfile.TemporaryDirectory() as directory:
+                main = Path(directory) / "main.ecs"
+                main.write_text("RETURN 0\n", encoding="utf-8")
+                console = Mock(encoding="utf-8")
+                console.write.side_effect = OSError(errno.EINVAL, "Invalid argument")
+                log = io.StringIO()
+                runner = FlowRunner(Path("runner.exe"), port="COM4", video_device=0, log=log)
+                with patch("run_tid_starter_flow.sys.stdout", console), \
+                     patch("run_tid_starter_flow.subprocess.Popen", return_value=_FakeProcess(lines, exit_code)):
+                    self.assertEqual(runner.run_stage(1, "TID/SID", main, required_marker=ID_MARKER), expected)
+                self.assertIn("[流程错误]", log.getvalue())
+
+    def test_missing_stdout_still_records_file_and_progress(self):
+        log = io.StringIO()
+        runner = FlowRunner(Path("runner.exe"), port="COM4", video_device=0, log=log)
+        with patch("run_tid_starter_flow.sys.stdout", None):
+            runner.output("TIDFLOW|ID|TID=39792")
+        self.assertEqual(log.getvalue(), "TIDFLOW|ID|TID=39792\n")
+
+    def test_real_log_file_errors_are_not_silenced(self):
+        log = Mock()
+        log.write.side_effect = OSError(errno.ENOSPC, "No space left on device")
+        runner = FlowRunner(Path("runner.exe"), port="COM4", video_device=0, log=log)
+        with patch("run_tid_starter_flow.sys.stdout", io.StringIO()), self.assertRaises(OSError) as caught:
+            runner.output("test")
+        self.assertEqual(caught.exception.errno, errno.ENOSPC)
+
     def test_only_confirmed_shiny_completion_exposes_successful_sid_correction(self):
         parser = getattr(starter_flow, "parse_successful_sid_advance_correction", None)
         self.assertTrue(callable(parser))

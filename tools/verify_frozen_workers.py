@@ -40,6 +40,26 @@ def verify(executable: Path) -> None:
             raise RuntimeError("Frozen worker ignored the stop file")
         print("PASS: frozen log worker UTF-8 pipes, file log, exit code and pre-start cancellation", flush=True)
 
+        detached_log = root / "detached.log"
+        child = "import sys,time; print('CONNECTED',flush=True); time.sleep(.2); print('AFTER_DISCONNECT'*2048,flush=True); sys.exit(7)"
+        command = [str(executable), "--worker", "easycon-log", "--log-path", str(detached_log),
+                   "--cwd", str(root), "--", sys.executable, "-u", "-c", child]
+        with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                              env=environment) as process:
+            # A closed reader reproduces GUI output detachment, without devices.
+            process.stdout.close()
+            try:
+                exit_code = process.wait(timeout=30)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+                raise
+            errors = process.stderr.read()
+        expected = "CONNECTED\n" + "AFTER_DISCONNECT" * 2048 + "\n"
+        if exit_code != 7 or errors or detached_log.read_text(encoding="utf-8") != expected:
+            raise RuntimeError(f"Detached console lost file output/exit code: {exit_code} {errors!r}")
+        print("PASS: frozen worker with disconnected stdout retains complete log and child exit code", flush=True)
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)

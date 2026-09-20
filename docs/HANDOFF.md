@@ -2,7 +2,19 @@
 
 本文是当前火红/叶绿全自动乱数初步实现的开发快照。换设备或新建 Codex 对话时，先让新对话完整阅读本文件、根目录 `README.md` 和 `docs/INITIAL_AUTO_RNG.md`，再检查工作区实际状态。
 
-快照日期：2026-09-16。
+快照日期：2026-09-20。
+
+## 2026-09-20 打包后台标准输出失效容错
+
+- 用户截图在 `run_tid_starter_flow.py:144` 的 `print(message, flush=True)` 报 `OSError: [Errno 22] Invalid argument`；阶段与总流程错误处理再次调用同一输出函数，形成三层异常。不是脚本参数、TID/SID计算或日版版本校验错误。堆栈只能确定Windows标准输出写入/刷新失败，不能仅凭图片认定用户关了窗口、管道由谁关闭，或是中文路径导致。
+- 新增轻量 `console_output.write_console()`，对缺失stdout、无效句柄、断管、关闭流及编码替换后的再次写入失败进行容错。流首次失效后将 `sys.stdout` 停用并关闭旧流（关闭时的句柄异常也单独处理），避免Python退出阶段再次刷新损坏缓冲区。TID输出和普通/孵蛋日志运行器共用它，文件日志先写入并刷新，随后才向控制台镜像。实测数据库、续跑进度、成功标记与子进程退出码照常处理；仅控制台是可选输出，磁盘满等文件日志异常和程序逻辑错误不被吞掉。未改ECS原包、预校准、RNG或设备操作。
+- 新增回归覆盖write/flush两处EINVAL、EBADF/EPIPE、stdout为None/已关闭、中文编码回退后的句柄错误、完整TID身份输出与进度回调、子进程非零退出、缺失成功标记、磁盘日志错误。修改前复现相同异常，修复后72项相关回归通过；实际源码子进程关闭stdout读取端后仍保存完整日志并返回原子进程退出码7。
+- 构建检查 `tools.verify_frozen_workers` 增加真实冻结日志进程的断管测试，不连接单片机或运行游戏。首次构建被该检查正确拦截：只捕获写入异常但未停用stdout时，窗口版Python在退出阶段再次刷新，返回120而非子进程的7；证据 `.build/console-einval-build.log`。这份 `.build/windows-release-pyside6-0-9-3-20260920-consolefix` 是失败构建，不可分发。修复停用/关闭后，源码有缓冲stdout断管测试保持退出码7且stderr为空。
+- 0.9.3内部版本码提升为 `2026092001`，最终修复包使用独立目录 `.build/windows-release-pyside6-0-9-3-20260920-consolefix-r2`；保留9月16日旧构建用于回归，不应再把它们作为包含此次修复的包分发。
+- 最终完整回归698项：671通过、27按环境或资源条件跳过，日志 `.build/console-einval-final-all-tests.log`；最终定向30项通过。实际冻结后台断管后保留完整日志和子进程退出码7、stderr为空，见 `.build/console-einval-frozen-final.log`；源码TID控制器连接真实文本子进程的断管检查也保留身份39792/2295与阶段完成记录，全程没有连接单片机或操作游戏。
+- 最终ZIP为592780976字节（约565.3MiB），SHA-256 `73a3db21ab16a69d2fa85f8b7929f3224e9ab7a5b24fc5b4cbb039009e612934`。ZIP CRC、版本与更新清单、包内脚本/标签/覆盖层和两份正式OCR模型检查通过；直接提取EXE的7个关键模块字节码，与当前源码逐项相同。Gitee共7卷，前6卷各94371840字节、末卷26549936字节；生产更新器经本地文件传输重组后的ZIP摘要一致，不代表已验证线上下载。证据为构建目录 `verification.json` 和 `.build/console-einval-package.log`。
+- r2构建已完成压缩包和清单，但末尾默认界面截图冒烟曾以 `0xc0000409` 退出，Windows事件记录指向Qt6Core.dll；不能写成构建命令全程成功。之后独立验收的原生TID/孵蛋截图以及默认野生页连续5次启动/截图/退出均正常，stderr为空，日志 `.build/console-einval-native-wild.log`。此Qt异常暂未重现，原因未确定，与截图中的Python控制台输出错误分开记录，不宣称已经修复。
+- 本次提供本地包和Gitee待上传分卷，未创建或替换GitHub/Gitee Release；未修改用户已有配置或生成工程。
 
 ## 2026-09-16 日版 Switch 2 动态御三家接续修复
 

@@ -18,6 +18,7 @@ import sys
 import tempfile
 from typing import TextIO
 
+from console_output import write_console
 from device_label_overrides import (
     PROJECT_OVERRIDE_FILENAME,
     LabelOverrideProfile,
@@ -140,14 +141,9 @@ class FlowRunner:
         self.id_main_override: Path | None = None
 
     def output(self, message: str) -> None:
-        try:
-            print(message, flush=True)
-        except UnicodeEncodeError:
-            encoding = getattr(sys.stdout, "encoding", None) or "ascii"
-            safe_message = message.encode(encoding, errors="replace").decode(encoding)
-            print(safe_message, flush=True)
         self.log.write(message + "\n")
         self.log.flush()
+        write_console(message + "\n")
         if self.recording is not None:
             self.recording.feed(message + "\n")
         if self.progress is not None and self.active_stage == 1:
@@ -689,7 +685,7 @@ def main() -> int:
             else prepare_compat_runner(Path(args.ezcon))
         )
     except (OSError, ValueError, RuntimeError) as exc:
-        print(f"[流程错误] EasyCon 1.6.4-a 兼容运行器检查失败：{exc}")
+        write_console(f"[流程错误] EasyCon 1.6.4-a 兼容运行器检查失败：{exc}\n")
         return 2
 
     with log_path.open("w", encoding="utf-8") as log, recording_session(
@@ -702,7 +698,7 @@ def main() -> int:
                 leases.enter_context(progress_lease(args.tid_progress_dir / ("device-" + port_key + ".lock")))
             except (OSError, RuntimeError) as exc:
                 log.write(f"[流程停止] {exc}\n")
-                print(f"[流程停止] {exc}")
+                write_console(f"[流程停止] {exc}\n")
                 return 2
         flow = FlowRunner(
             runner_path,
